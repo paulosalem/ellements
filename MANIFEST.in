@@ -1,0 +1,6 @@
+include README.md
+include LICENSE
+include ellements_logo_transparent_crisp.png
+include ellements-*/README.md
+include ellements-*/DESIGN.md
+include ellements-*/LICENSE

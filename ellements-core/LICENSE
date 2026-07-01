@@ -1,0 +1,42 @@
+Project Status and Maintenance Notice
+
+This repository is in constant flux. It is maintained primarily for my own
+research, extreme experimentation, and personal tooling, and it exists to
+support my other projects. Probably nobody other than me should take a
+dependency on it. The point is to keep extending it as new ideas become useful,
+not to provide a stable dependency surface. APIs, package boundaries, behavior,
+and release cadence may change abruptly whenever that helps my projects.
+
+The project is unlikely to accept pull requests. It is published for
+transparency and my own reuse, not as a community-maintained library or a
+general-purpose package roadmap.
+
+This repository is maintained almost entirely through AI-assisted programming
+and automated agentic refactoring/review workflows, under my direction. I myself
+understand only a fraction of it at any given time. That maintenance model can
+produce fast-paced changes, abrupt clean breaks, and both good and bad surprises.
+The software remains provided "as is" under the MIT License below.
+
+This notice is informational and is not an additional license condition.
+
+MIT License
+
+Copyright (c) 2026 Paulo Salem
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

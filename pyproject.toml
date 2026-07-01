@@ -1,0 +1,165 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ellements"
+version = "0.1.0"
+description = "Public Ellements core: LLM primitives, execution strategies, benchmarking helpers, and shared CLI presentation."
+authors = [{ name = "Paulo Salem", email = "paulosalem@paulosalem.com" }]
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+keywords = [
+    "llm",
+    "ai",
+    "prompting",
+    "benchmarking",
+    "cli",
+    "tooling",
+]
+dependencies = [
+    "chevron>=0.14.0",
+    "litellm>=1.0.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "rich>=13.0.0",
+    "tiktoken>=0.7.0",
+    "typing-extensions>=4.8.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/paulosalem/ellements"
+Documentation = "https://github.com/paulosalem/ellements"
+Repository = "https://github.com/paulosalem/ellements"
+"Bug Tracker" = "https://github.com/paulosalem/ellements/issues"
+
+[project.scripts]
+fslm = "ellements.fslm.cli:main"
+
+[project.optional-dependencies]
+core = []
+execution = [
+    "chevron>=0.14.0",
+]
+fslm = []
+benchmarking = [
+    "lm-eval>=0.4.0",
+]
+cli = [
+    "rich>=13.0.0",
+    "textual>=0.40.0",
+]
+agents = [
+    "openai-agents>=0.0.1",
+]
+all = [
+    "chevron>=0.14.0",
+    "lm-eval>=0.4.0",
+    "openai-agents>=0.0.1",
+    "rich>=13.0.0",
+    "textual>=0.40.0",
+]
+dev = [
+    "black>=23.0.0",
+    "mypy>=1.7.0",
+    "pre-commit>=3.0.0",
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "ruff>=0.1.0",
+]
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.package-data]
+"ellements.core" = ["py.typed"]
+"ellements.execution" = ["py.typed"]
+"ellements.agents" = ["py.typed"]
+"ellements.benchmarking" = ["py.typed"]
+"ellements.cli" = ["py.typed"]
+"ellements.fslm" = ["py.typed"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "B", "SIM", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+[tool.mypy]
+python_version = "3.11"
+cache_dir = "~/.cache/mypy/ellements"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+mypy_path = [
+    "ellements-core/src",
+    "ellements-execution/src",
+    "ellements-fslm/src",
+    "ellements-agents/src",
+    "ellements-benchmarking/src",
+    "ellements-cli/src",
+]
+namespace_packages = true
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = [
+    "chevron",
+    "chevron.*",
+    "yaml",
+    "yaml.*",
+    "litellm",
+    "litellm.*",
+    "lm_eval",
+    "lm_eval.*",
+    "agents",
+    "agents.*",
+    "claude_agents",
+    "claude_agents.*",
+    "textual",
+    "textual.*",
+    "rich",
+    "rich.*",
+    "tiktoken",
+    "tiktoken.*",
+]
+ignore_missing_imports = true
+follow_imports = "skip"
+follow_imports_for_stubs = true
+
+[tool.pytest.ini_options]
+testpaths = [
+    "ellements-core/tests",
+    "ellements-execution/tests",
+    "ellements-agents/tests",
+    "ellements-benchmarking/tests",
+    "ellements-cli/tests",
+    "ellements-fslm/tests",
+]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"
+asyncio_mode = "auto"
+markers = [
+    "integration: marks tests as integration tests (deselect with -m \\\"not integration\\\")",
+]
+
+[tool.black]
+target-version = ["py311"]
+line-length = 88
