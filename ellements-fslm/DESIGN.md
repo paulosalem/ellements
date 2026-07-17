@@ -421,7 +421,7 @@ policy, and references to executable pieces. It is useful for:
 - simple machines that mostly use built-in predicates/effects/actions;
 - machine families that share a binding module;
 - generated machines;
-- future PromptSpec-to-FSLM compilation.
+- WeaveMark-to-FSLM compilation.
 
 YAML should not attempt to embed Python code. Executable behavior is referenced.
 
@@ -557,10 +557,9 @@ bindings:
 This allows a domain expert to define the Python extension points once, then
 author many concise YAML machines in the same family.
 
-### 8.3 PromptSpec path, later
+### 8.3 WeaveMark integration
 
-PromptSpec integration remains deferred. When implemented, PromptSpec can
-compile to:
+WeaveMark compiles inline machine sugar to:
 
 - a YAML machine spec;
 - references to built-in bindings;
@@ -568,7 +567,7 @@ compile to:
 - optional generated Python bindings when semantic behavior cannot be expressed
   through built-ins.
 
-The key idea is that PromptSpec should not need to generate arbitrary opaque
+The key idea is that WeaveMark should not need to generate arbitrary opaque
 runtime behavior when a standard binding family already exists.
 
 ## 9. Fluent DSL
@@ -1478,20 +1477,17 @@ Useful options:
 The CLI should not become a separate runtime. It should be a thin wrapper over
 `ellements.fslm`.
 
-## 28. PromptSpec integration
+## 28. WeaveMark integration
 
-PromptSpec integration is explicitly deferred until the core `ellements.fslm`
-runtime is stable. The v1 library should not carry PromptSpec-specific
-assumptions in its core models or kernel.
+WeaveMark integrates at the adapter boundary; the `ellements.fslm` core models
+and deterministic kernel remain independent of WeaveMark-specific assumptions.
 
-Later, PromptSpec should be able to compile down to `ellements.fslm`.
-
-The preferred future path is for PromptSpec to emit a YAML machine spec plus
+WeaveMark may emit a YAML machine spec plus
 binding references to built-in or user-supplied family modules. If the machine
 requires custom executable behavior that cannot be represented through existing
-bindings, PromptSpec may also emit a companion Python module.
+bindings, WeaveMark may also emit a companion Python module.
 
-PromptSpec may emit:
+WeaveMark may emit:
 
 - YAML machine specs;
 - companion Python binding modules;
@@ -1501,7 +1497,7 @@ PromptSpec may emit:
 - example events;
 - Mermaid diagrams.
 
-The PromptSpec `@execute fslm` mode can load and run generated artifacts
+The WeaveMark `@execute fslm` mode loads and runs generated artifacts
 through the same `ellements.fslm` APIs used by the `fslm` CLI.
 
 ## 29. Security and trust model
@@ -1551,8 +1547,7 @@ Integration tests:
 - terminal safety blocked path with fake evaluator;
 - coordination artifact input/output;
 - agentic event queue and recovery loop;
-- PromptSpec-generated YAML/Python artifacts only after PromptSpec integration
-  is intentionally implemented.
+- WeaveMark-generated inline and external machine artifacts.
 
 ## 31. Ergonomic guidelines
 
@@ -1596,7 +1591,6 @@ Explicitly deferred from v1:
 - visual editor;
 - long-running distributed scheduler;
 - vector memory integration;
-- PromptSpec integration;
 - automatic synthesis of full machines from prose;
 - formal verification beyond structural graph validation.
 

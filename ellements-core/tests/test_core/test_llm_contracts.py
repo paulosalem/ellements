@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -13,7 +14,11 @@ from ellements.core import (
     LogprobsUnsupportedError,
     StructuredOutputUnsupportedError,
 )
-from ellements.core.llm.client import _classify_retryable, _full_jitter_backoff
+from ellements.core.llm.client import (
+    _classify_retryable,
+    _full_jitter_backoff,
+    _usage_dict,
+)
 from pydantic import BaseModel
 
 
@@ -24,6 +29,18 @@ def _mock_completion(content: str = "ok") -> Any:
     response.choices = [MagicMock(message=message)]
     response.usage = None
     return response
+
+
+def test_usage_includes_provider_reported_response_cost():
+    response = _mock_completion()
+    response.usage = {"prompt_tokens": 10, "completion_tokens": 3}
+    response._hidden_params = {"response_cost": 0.0012}
+
+    assert _usage_dict(response) == {
+        "prompt_tokens": 10,
+        "completion_tokens": 3,
+        "response_cost": 0.0012,
+    }
 
 
 # ── Required-model construction ────────────────────────────────────
@@ -89,6 +106,42 @@ def test_full_jitter_backoff_in_bounds():
 def test_full_jitter_backoff_varies():
     samples = {round(_full_jitter_backoff(3, base=0.5, cap=30.0), 6) for _ in range(50)}
     assert len(samples) > 5, "Jitter should produce a spread of delays"
+
+
+@pytest.mark.asyncio
+async def test_image_edit_recreates_upload_streams_for_retry():
+    client = LLMClient(
+        model="openai/gpt-image-1",
+        retry_base_delay=0.0,
+        retry_max_delay=0.0,
+    )
+    payload = b"reference image bytes"
+    attempts: list[bytes] = []
+
+    async def fake_image_edit(*, image: list[Any], **kwargs: Any) -> Any:
+        del kwargs
+        attempts.append(image[0].read())
+        if len(attempts) == 1:
+            raise litellm.RateLimitError(
+                message="retry",
+                llm_provider="openai",
+                model="gpt-image-1",
+            )
+        return SimpleNamespace(
+            created=1,
+            data=[{"b64_json": "result"}],
+            model="gpt-image-1",
+            usage=None,
+        )
+
+    with patch("ellements.core.llm.client.litellm.aimage_edit", fake_image_edit):
+        result = await client.edit_image(
+            "Preserve this reference.",
+            [("reference.png", payload)],
+        )
+
+    assert attempts == [payload, payload]
+    assert result.data[0].b64_json == "result"
 
 
 # ── Auth/BadRequest are not retried by complete() ───────────────────

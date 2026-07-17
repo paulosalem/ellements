@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from importlib import import_module
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from pkgutil import extend_path
 from typing import Any
@@ -15,8 +16,11 @@ _SOURCE_ROOTS = [
     "ellements-benchmarking/src/ellements",
     "ellements-cli/src/ellements",
     "ellements-core/src/ellements",
+    "ellements-domain-specific/src/ellements",
     "ellements-execution/src/ellements",
     "ellements-fslm/src/ellements",
+    "ellements-reporting/src/ellements",
+    "ellements-standard-tools/src/ellements",
 ]
 
 for relative_root in _SOURCE_ROOTS:
@@ -33,7 +37,12 @@ _ROOT_EXPORTS: dict[str, tuple[str, str]] = {
     "SimpleTool": ("ellements.core", "SimpleTool"),
 }
 
-__all__ = sorted(_ROOT_EXPORTS)
+try:
+    __version__ = version("ellements")
+except PackageNotFoundError:
+    __version__ = "0.2.0"
+
+__all__ = [*sorted(_ROOT_EXPORTS), "__version__"]
 
 
 def __getattr__(name: str) -> Any:

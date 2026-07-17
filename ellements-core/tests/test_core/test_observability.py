@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -132,6 +133,9 @@ async def test_logger_handles_multimodal_messages(tmp_path):
     ]
     assert records[0]["messages"][0]["content"][0]["type"] == "text"
     assert records[0]["messages"][0]["content"][1]["type"] == "image_url"
+    if os.name != "nt":
+        assert tmp_path.stat().st_mode & 0o777 == 0o700
+        assert logger.current_path.stat().st_mode & 0o777 == 0o600
 
 
 def test_format_log_markdown_renders_each_record(tmp_path):

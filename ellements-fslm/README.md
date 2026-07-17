@@ -9,6 +9,13 @@ The name is intentionally **FSLM**, not just state machine terminology with a ne
 coat of paint. The linguistic part matters: guards, invariants, actions, and
 outputs may be backed by prompts when semantic judgment is the point.
 
+`ellements.fslm` is part of the public `ellements` distribution beginning with
+version 0.2.0:
+
+```bash
+pip install "ellements[fslm]>=0.2.0"
+```
+
 The command-line entry point is `fslm`. It emits JSON by default for automation,
 and `--format rich` when a human wants to inspect transitions, guard decisions,
 outputs, and trace context.
@@ -85,13 +92,16 @@ fslm init-state machine.yaml --state-dir .fslm-state
 fslm step machine.yaml --state-dir .fslm-state --event event.json
 ```
 
-## PromptSpec integration
+## WeaveMark integration
 
-PromptSpec’s `@execute fslm` engine imports this package directly as
-`ellements.fslm`. PromptSpec owns the prompt library; `ellements.fslm` owns the
-machine graph and runtime contract. Natural-language guards conventionally map
-to prompts such as `guard.<id>`, invariants to `invariant.<id>`, actions to
-`action.<name>`, and outputs to `output.<type>`.
+WeaveMark’s `@execute fslm` engine imports this package directly as
+`ellements.fslm`. WeaveMark owns the prompt library; `ellements.fslm` owns the
+machine graph and runtime contract. External machine definitions may select
+prompt names with `metadata.prompt_key`; otherwise guards conventionally map to
+`guard.<id>`, invariants to `invariant.<id>`, actions to `action.<name>`, and
+outputs to `output.<type>`. WeaveMark inline-machine sugar records
+collision-safe keys such as `guard.<state>.<transition>.<id>` and
+`action.<state>.<transition>.<name>` in that metadata.
 
 ## Extending
 

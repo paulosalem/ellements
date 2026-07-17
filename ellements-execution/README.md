@@ -74,6 +74,7 @@ result = await SelfConsistencyStrategy().execute(
 
 New strategies should implement `Strategy`, define a dedicated `*Config`, state
 their required prompt keys in code and documentation, emit meaningful
-`StepRecord`s, and avoid their own retry layer. Use Mustache placeholders for
-prompt composition and structured Pydantic outputs whenever a decision must be
-machine-readable.
+`StepRecord`s, and avoid their own retry layer. Runtime prompt templates support
+Mustache placeholders such as `{{response}}` and PromptSpec-style placeholders
+such as `@{response}`. Use structured Pydantic outputs whenever a decision must
+be machine-readable.

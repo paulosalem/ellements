@@ -11,8 +11,11 @@ ELLEMENTS_SOURCE_ROOTS = [
     "ellements-benchmarking/src",
     "ellements-cli/src",
     "ellements-core/src",
+    "ellements-domain-specific/src",
     "ellements-execution/src",
     "ellements-fslm/src",
+    "ellements-reporting/src",
+    "ellements-standard-tools/src",
 ]
 
 

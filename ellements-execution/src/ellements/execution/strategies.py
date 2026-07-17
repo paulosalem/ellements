@@ -7,7 +7,7 @@ The :class:`Strategy` Protocol is the canonical public type. Any object
 with a matching ``execute`` method satisfies it — no inheritance
 required. :class:`BaseStrategy` is an optional helper that supplies
 shared utilities (config normalization, prompt resolution, step
-notification, Mustache rendering, tool-aware LLM invocation).
+notification, runtime-template rendering, tool-aware LLM invocation).
 
 Retry and backoff live exclusively on :class:`~ellements.core.LLMClient`.
 Strategies must not retry on top.
@@ -16,6 +16,7 @@ Strategies must not retry on top.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol, TypeVar, runtime_checkable
@@ -126,9 +127,25 @@ class BaseStrategy:
 
     @staticmethod
     def _render_template(template: str, context: Mapping[str, Any]) -> str:
-        """Render a Mustache template against *context*."""
+        """Render runtime placeholders against *context*.
+
+        Strategies support regular Mustache placeholders (``{{name}}``) plus
+        PromptSpec-style placeholders (``@{name}``) so executable PromptSpec
+        files can use the same placeholder form as the rest of the DSL.
+        """
         rendered: str = chevron.render(template, dict(context))
-        return rendered
+
+        def replace_promptspec_placeholder(match: re.Match[str]) -> str:
+            key = match.group(1)
+            if key not in context:
+                return match.group(0)
+            return str(context[key])
+
+        return re.sub(
+            r"@\{([A-Za-z_][\w.-]*)\}",
+            replace_promptspec_placeholder,
+            rendered,
+        )
 
     @staticmethod
     def _stage_temperature(

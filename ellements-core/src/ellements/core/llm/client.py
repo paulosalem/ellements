@@ -31,7 +31,14 @@ import json
 import logging
 import random
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping
+from collections.abc import (
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Iterable,
+    Mapping,
+    Sequence,
+)
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeVar
@@ -64,6 +71,7 @@ from ..tools import (
 )
 from .images import (
     ImageGenerationResponse,
+    build_image_edit_request,
     build_image_generation_request,
     parse_image_generation_response,
 )
@@ -132,7 +140,9 @@ def _classify_retryable(exc: BaseException) -> bool:
     return isinstance(exc, transient_types)
 
 
-def _full_jitter_backoff(attempt: int, *, base: float = 0.5, cap: float = 30.0) -> float:
+def _full_jitter_backoff(
+    attempt: int, *, base: float = 0.5, cap: float = 30.0
+) -> float:
     """Return an AWS-style full-jitter backoff delay for *attempt* (0-indexed)."""
     return random.uniform(0.0, min(cap, base * (2**attempt)))
 
@@ -665,6 +675,7 @@ class LLMClient:
         )
 
         state = _ToolLoopState(llm_messages=llm_messages)
+        aggregate_usage: dict[str, Any] = {}
         for _ in range(max_iterations):
             response = await self._invoke_litellm(
                 call_id=call_id,
@@ -675,6 +686,10 @@ class LLMClient:
                 tools=tool_definitions,
                 start=start,
                 fail_label="Tool-calling completion",
+            )
+            aggregate_usage = _merge_usage(
+                aggregate_usage,
+                _usage_dict(response),
             )
             state.assistant_msg = response.choices[0].message
             tool_calls = getattr(state.assistant_msg, "tool_calls", None)
@@ -692,7 +707,7 @@ class LLMClient:
                         response=result.content,
                         duration_ms=int((time.monotonic() - start) * 1000),
                         tool_calls=[r.model_dump() for r in state.tool_log],
-                        usage=_usage_dict(response),
+                        usage=aggregate_usage or None,
                     )
                 )
                 return result
@@ -827,9 +842,7 @@ class LLMClient:
 
             total_ll = float(
                 sum(
-                    value
-                    for value in token_logprobs
-                    if isinstance(value, (int, float))
+                    value for value in token_logprobs if isinstance(value, (int, float))
                 )
             )
             is_greedy = generated.strip().startswith(continuation.strip())
@@ -902,7 +915,9 @@ class LLMClient:
                 lambda: litellm.aimage_generation(**params),
                 what="generate_image",
             )
-            parsed = parse_image_generation_response(response, target_model=target_model)
+            parsed = parse_image_generation_response(
+                response, target_model=target_model
+            )
             await self._emit_response(
                 LLMResponseEvent(
                     call_id=call_id,
@@ -927,6 +942,105 @@ class LLMClient:
                 raise
             raise LLMError(f"Image generation failed: {exc}") from exc
 
+    # ── edit_image ────────────────────────────────────────────────────
+
+    async def edit_image(
+        self,
+        prompt: str,
+        images: Sequence[tuple[str, bytes] | bytes],
+        *,
+        model: str | None = None,
+        n: int = 1,
+        size: str | None = None,
+        quality: str | None = None,
+        **kwargs: Any,
+    ) -> ImageGenerationResponse:
+        """Edit/compose images from reference *images* and a text *prompt*.
+
+        Each entry in *images* is either raw ``bytes`` or a ``(filename, bytes)``
+        tuple. The references are uploaded to the provider's image-edit endpoint
+        (e.g. ``gpt-image-1``) so the generated image is conditioned on them.
+        """
+        import io
+
+        call_id = str(uuid4())
+        start = time.monotonic()
+        target_model, params = build_image_edit_request(
+            prompt=prompt,
+            model=model,
+            n=n,
+            size=size,
+            quality=quality,
+            extra_params=dict(kwargs),
+        )
+
+        references: list[tuple[str, bytes]] = []
+        for index, item in enumerate(images):
+            if isinstance(item, tuple):
+                name, payload = item
+            else:
+                name, payload = f"reference_{index}.png", item
+            references.append((name, payload))
+
+        await self._emit_request(
+            LLMRequestEvent(
+                call_id=call_id,
+                method="edit_image",
+                model=target_model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=None,
+                max_tokens=None,
+                extra_params={
+                    **{k: v for k, v in params.items() if k != "prompt"},
+                    "reference_images": len(references),
+                },
+            )
+        )
+
+        async def _edit_attempt() -> Any:
+            files: list[io.BytesIO] = []
+            for name, payload in references:
+                handle = io.BytesIO(payload)
+                handle.name = name
+                files.append(handle)
+            try:
+                return await litellm.aimage_edit(image=files, **params)
+            finally:
+                for handle in files:
+                    handle.close()
+
+        try:
+            response = await self._call_with_retry(
+                _edit_attempt,
+                what="edit_image",
+            )
+            parsed = parse_image_generation_response(
+                response, target_model=target_model
+            )
+            await self._emit_response(
+                LLMResponseEvent(
+                    call_id=call_id,
+                    method="edit_image",
+                    model=target_model,
+                    response=json.dumps(parsed.model_dump(), default=str),
+                    duration_ms=int((time.monotonic() - start) * 1000),
+                )
+            )
+            return parsed
+        except Exception as exc:
+            await self._emit_error(
+                LLMErrorEvent(
+                    call_id=call_id,
+                    method="edit_image",
+                    model=target_model,
+                    error=exc,
+                    duration_ms=int((time.monotonic() - start) * 1000),
+                )
+            )
+            if isinstance(exc, LLMError):
+                raise
+            raise LLMError(f"Image edit failed: {exc}") from exc
+
 
 # ---------------------------------------------------------------------------
 # Local helpers
@@ -936,16 +1050,47 @@ class LLMClient:
 def _usage_dict(response: Any) -> dict[str, Any] | None:
     usage = getattr(response, "usage", None)
     if usage is None:
-        return None
-    if hasattr(usage, "model_dump"):
-        dumped: dict[str, Any] = usage.model_dump()
-        return dumped
-    if hasattr(usage, "dict"):
-        as_dict: dict[str, Any] = usage.dict()
-        return as_dict
-    if isinstance(usage, dict):
-        return dict(usage)
-    return None
+        data: dict[str, Any] = {}
+    elif hasattr(usage, "model_dump"):
+        data = usage.model_dump()
+    elif hasattr(usage, "dict"):
+        data = usage.dict()
+    elif isinstance(usage, dict):
+        data = dict(usage)
+    else:
+        data = {}
+
+    hidden = getattr(response, "_hidden_params", None)
+    if isinstance(hidden, Mapping):
+        response_cost = hidden.get("response_cost")
+        if isinstance(response_cost, int | float):
+            data["response_cost"] = float(response_cost)
+    return data or None
+
+
+def _merge_usage(
+    aggregate: Mapping[str, Any],
+    current: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Add provider usage from one turn into a multi-turn total."""
+
+    merged = dict(aggregate)
+    if current is None:
+        return merged
+    for key, value in current.items():
+        previous = merged.get(key)
+        if isinstance(previous, Mapping) and isinstance(value, Mapping):
+            merged[key] = _merge_usage(previous, value)
+        elif (
+            isinstance(previous, int | float)
+            and not isinstance(previous, bool)
+            and isinstance(value, int | float)
+            and not isinstance(value, bool)
+        ):
+            merged[key] = previous + value
+        else:
+            merged[key] = value
+    return merged
 
 
 def _serialize_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:

@@ -155,6 +155,30 @@ def build_image_generation_request(
     return target_model, params
 
 
+def build_image_edit_request(
+    *,
+    prompt: str,
+    model: str | None,
+    n: int,
+    size: str | None,
+    quality: str | None,
+    extra_params: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """Build provider parameters for image-*edit* calls (references + prompt).
+
+    The input image files are passed separately to the provider call; this
+    returns only the JSON-friendly parameters.
+    """
+    target_model = model or "gpt-image-1"
+    params: dict[str, Any] = {"prompt": prompt, "model": target_model, "n": n}
+    if size:
+        params["size"] = size
+    if quality:
+        params["quality"] = quality
+    params.update(extra_params)
+    return target_model, params
+
+
 def normalize_usage(usage_obj: Any) -> Any | None:
     """Convert provider-specific usage payloads into serializable objects."""
     if not usage_obj:
@@ -195,6 +219,7 @@ __all__ = [
     "GeneratedImage",
     "ImageGenerationResponse",
     "ImageInput",
+    "build_image_edit_request",
     "build_image_generation_request",
     "normalize_usage",
     "parse_image_generation_response",

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections import Counter
 from collections.abc import Mapping
 from typing import Any
@@ -122,10 +123,34 @@ class SelfConsistencyStrategy(BaseStrategy):
 
     @staticmethod
     def _majority_vote(responses: list[str]) -> str:
-        """Pick the most common response (by exact normalized string match)."""
-        counter = Counter(r.strip() for r in responses)
+        """Pick the most common final answer, falling back to full responses."""
+        displays: dict[tuple[str, str], str] = {}
+        counter: Counter[tuple[str, str]] = Counter()
+        for response in responses:
+            answer = SelfConsistencyStrategy._extract_final_answer(response)
+            if answer is None:
+                display = response.strip()
+                key = ("response", display)
+            else:
+                display = f"ANSWER: {answer}"
+                key = ("answer", answer.casefold())
+            displays.setdefault(key, display)
+            counter[key] += 1
         winner, _ = counter.most_common(1)[0]
-        return winner
+        return displays[winner]
+
+    @staticmethod
+    def _extract_final_answer(response: str) -> str | None:
+        """Extract a final ``ANSWER: ...`` line when a prompt provides one."""
+        matches = re.findall(
+            r"(?im)^\s*(?:\*\*)?answer(?:\*\*)?\s*:\s*(.+?)\s*$",
+            response,
+        )
+        if not matches:
+            return None
+        answer = matches[-1].strip().strip("`")
+        answer = re.sub(r"\s+", " ", answer)
+        return answer.rstrip(".")
 
     async def _llm_judge(
         self,

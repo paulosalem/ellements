@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -127,6 +128,8 @@ class JsonlPromptLogger:
     ) -> None:
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
+        if os.name != "nt":
+            self.log_dir.chmod(0o700)
         self._filename_pattern = filename_pattern
         self._lock = asyncio.Lock()
         # In-flight requests indexed by call_id so on_response / on_error
@@ -234,6 +237,8 @@ class JsonlPromptLogger:
     def _append_line(path: Path, line: str) -> None:
         with path.open("a", encoding="utf-8") as handle:
             handle.write(line)
+        if os.name != "nt":
+            path.chmod(0o600)
 
 
 __all__ = ["JsonlPromptLogger", "LoggedCall"]

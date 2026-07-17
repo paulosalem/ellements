@@ -4,16 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ellements"
-version = "0.1.0"
-description = "Public Ellements core: LLM primitives, execution strategies, benchmarking helpers, and shared CLI presentation."
+version = "0.2.0"
+description = "Public Ellements primitives for LLM calls, execution strategies, finite-state linguistic machines, benchmarking, and CLI presentation."
 authors = [{ name = "Paulo Salem", email = "paulosalem@paulosalem.com" }]
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.11"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -29,13 +28,13 @@ keywords = [
     "tooling",
 ]
 dependencies = [
-    "chevron>=0.14.0",
-    "litellm>=1.0.0",
-    "pydantic>=2.0.0",
-    "pyyaml>=6.0",
-    "rich>=13.0.0",
-    "tiktoken>=0.7.0",
-    "typing-extensions>=4.8.0",
+    "chevron>=0.14.0,<1",
+    "litellm>=1.0.0,<2",
+    "pydantic>=2.0.0,<3",
+    "pyyaml>=6.0,<7",
+    "rich>=13.0.0,<15",
+    "tiktoken>=0.7.0,<1",
+    "typing-extensions>=4.8.0,<5",
 ]
 
 [project.urls]
@@ -50,33 +49,116 @@ fslm = "ellements.fslm.cli:main"
 [project.optional-dependencies]
 core = []
 execution = [
-    "chevron>=0.14.0",
+    "chevron>=0.14.0,<1",
 ]
 fslm = []
 benchmarking = [
-    "lm-eval>=0.4.0",
+    "lm-eval>=0.4.0,<0.5",
 ]
 cli = [
-    "rich>=13.0.0",
-    "textual>=0.40.0",
+    "rich>=13.0.0,<15",
+    "textual>=0.40.0,<7",
 ]
 agents = [
-    "openai-agents>=0.0.1",
+    "openai-agents>=0.0.1,<1",
+]
+reporting = [
+    "jinja2>=3.1.0,<4",
+    "matplotlib>=3.7.0,<4",
+    "pandas>=2.0.0,<4",
+]
+finance = [
+    "numpy>=1.26.0,<3",
+    "numpy-financial>=1.0.0,<2",
+    "pandas>=2.0.0,<4",
+    "yfinance>=0.2.0,<1",
+]
+finance-technical = [
+    "jinja2>=3.1.0,<4",
+    "matplotlib>=3.7.0,<4",
+    "mplfinance>=0.12.10b0,<1",
+    "numpy>=1.26.0,<3",
+    "pandas>=2.0.0,<4",
+    "TA-Lib>=0.6.5,<1",
+    "yfinance>=0.2.0,<1",
+]
+finance-quant = [
+    "numpy>=1.26.0,<3",
+    "pandas>=2.0.0,<4",
+    "quantstats>=0.0.62,<1",
+]
+domain-specific = [
+    "jinja2>=3.1.0,<4",
+    "matplotlib>=3.7.0,<4",
+    "mplfinance>=0.12.10b0,<1",
+    "numpy>=1.26.0,<3",
+    "numpy-financial>=1.0.0,<2",
+    "pandas>=2.0.0,<4",
+    "quantstats>=0.0.62,<1",
+    "TA-Lib>=0.6.5,<1",
+    "yfinance>=0.2.0,<1",
+]
+web-search = [
+    "duckduckgo-search>=6.0.0,<9",
+]
+web-crawl = [
+    "crawl4ai>=0.3.0,<1",
+    "nest-asyncio>=1.6.0,<2",
+    "playwright>=1.40.0,<2",
+]
+web-youtube = [
+    "httpx>=0.24.0,<0.28.0",
+    "youtube-search-python>=1.6.0,<2",
+    "youtube-transcript-api>=1.2.4,<2",
+]
+web = [
+    "crawl4ai>=0.3.0,<1",
+    "duckduckgo-search>=6.0.0,<9",
+    "httpx>=0.24.0,<0.28.0",
+    "nest-asyncio>=1.6.0,<2",
+    "playwright>=1.40.0,<2",
+    "youtube-search-python>=1.6.0,<2",
+    "youtube-transcript-api>=1.2.4,<2",
+]
+standard-tools = [
+    "crawl4ai>=0.3.0,<1",
+    "duckduckgo-search>=6.0.0,<9",
+    "httpx>=0.24.0,<0.28.0",
+    "nest-asyncio>=1.6.0,<2",
+    "playwright>=1.40.0,<2",
+    "youtube-search-python>=1.6.0,<2",
+    "youtube-transcript-api>=1.2.4,<2",
 ]
 all = [
-    "chevron>=0.14.0",
-    "lm-eval>=0.4.0",
-    "openai-agents>=0.0.1",
-    "rich>=13.0.0",
-    "textual>=0.40.0",
+    "chevron>=0.14.0,<1",
+    "crawl4ai>=0.3.0,<1",
+    "duckduckgo-search>=6.0.0,<9",
+    "httpx>=0.24.0,<0.28.0",
+    "jinja2>=3.1.0,<4",
+    "lm-eval>=0.4.0,<0.5",
+    "matplotlib>=3.7.0,<4",
+    "mplfinance>=0.12.10b0,<1",
+    "nest-asyncio>=1.6.0,<2",
+    "numpy>=1.26.0,<3",
+    "numpy-financial>=1.0.0,<2",
+    "openai-agents>=0.0.1,<1",
+    "pandas>=2.0.0,<4",
+    "playwright>=1.40.0,<2",
+    "quantstats>=0.0.62,<1",
+    "rich>=13.0.0,<15",
+    "TA-Lib>=0.6.5,<1",
+    "textual>=0.40.0,<7",
+    "yfinance>=0.2.0,<1",
+    "youtube-search-python>=1.6.0,<2",
+    "youtube-transcript-api>=1.2.4,<2",
 ]
 dev = [
-    "black>=23.0.0",
-    "mypy>=1.7.0",
-    "pre-commit>=3.0.0",
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
-    "ruff>=0.1.0",
+    "black>=23.0.0,<27",
+    "mypy>=1.7.0,<2",
+    "pre-commit>=3.0.0,<5",
+    "pytest>=7.0.0,<9",
+    "pytest-asyncio>=0.21.0,<2",
+    "ruff>=0.1.0,<1",
 ]
 
 [tool.setuptools]
@@ -89,6 +171,9 @@ include-package-data = false
 "ellements.benchmarking" = ["py.typed"]
 "ellements.cli" = ["py.typed"]
 "ellements.fslm" = ["py.typed"]
+"ellements.domain_specific" = ["py.typed"]
+"ellements.reporting" = ["py.typed"]
+"ellements.standard_tools" = ["py.typed"]
 
 [tool.ruff]
 target-version = "py311"
@@ -110,8 +195,11 @@ warn_unused_configs = true
 disallow_untyped_defs = true
 mypy_path = [
     "ellements-core/src",
+    "ellements-domain-specific/src",
     "ellements-execution/src",
     "ellements-fslm/src",
+    "ellements-reporting/src",
+    "ellements-standard-tools/src",
     "ellements-agents/src",
     "ellements-benchmarking/src",
     "ellements-cli/src",
@@ -129,6 +217,34 @@ module = [
     "litellm.*",
     "lm_eval",
     "lm_eval.*",
+    "crawl4ai",
+    "crawl4ai.*",
+    "duckduckgo_search",
+    "duckduckgo_search.*",
+    "ddgs",
+    "ddgs.*",
+    "jinja2",
+    "jinja2.*",
+    "markitdown",
+    "markitdown.*",
+    "matplotlib",
+    "matplotlib.*",
+    "mplfinance",
+    "mplfinance.*",
+    "numpy_financial",
+    "numpy_financial.*",
+    "pandas",
+    "pandas.*",
+    "quantstats",
+    "quantstats.*",
+    "talib",
+    "talib.*",
+    "yfinance",
+    "yfinance.*",
+    "youtube_transcript_api",
+    "youtube_transcript_api.*",
+    "youtubesearchpython",
+    "youtubesearchpython.*",
     "agents",
     "agents.*",
     "claude_agents",
@@ -147,17 +263,22 @@ follow_imports_for_stubs = true
 [tool.pytest.ini_options]
 testpaths = [
     "ellements-core/tests",
+    "ellements-domain-specific/tests",
     "ellements-execution/tests",
     "ellements-agents/tests",
     "ellements-benchmarking/tests",
     "ellements-cli/tests",
     "ellements-fslm/tests",
+    "ellements-reporting/tests",
+    "ellements-standard-tools/tests",
 ]
 python_files = ["test_*.py"]
 addopts = "-v --tb=short"
 asyncio_mode = "auto"
 markers = [
     "integration: marks tests as integration tests (deselect with -m \\\"not integration\\\")",
+    "requires_browser: marks tests that require a browser runtime such as Playwright/Chromium",
+    "requires_network: marks tests that require live network access",
 ]
 
 [tool.black]

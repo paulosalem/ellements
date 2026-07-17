@@ -65,7 +65,12 @@ def prepare_completion_request(
     logged_max_tokens = max_tokens
     target_max_tokens = max_tokens
 
-    if is_gpt5 and default_reasoning_effort and "reasoning_effort" not in params:
+    if (
+        is_gpt5
+        and use_responses_api
+        and default_reasoning_effort
+        and "reasoning_effort" not in params
+    ):
         params["reasoning_effort"] = default_reasoning_effort
 
     if is_gpt5 and target_max_tokens is not None:

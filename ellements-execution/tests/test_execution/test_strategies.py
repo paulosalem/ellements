@@ -201,6 +201,11 @@ def test_render_template_mustache():
     assert rendered == "hi world"
 
 
+def test_render_template_promptspec_placeholders():
+    rendered = BaseStrategy._render_template("hi @{name}", {"name": "world"})
+    assert rendered == "hi world"
+
+
 # ── SingleCallStrategy ────────────────────────────────────────────
 
 
@@ -274,6 +279,24 @@ async def test_self_consistency_majority_vote():
     )
     assert result.output == "A"
     assert result.metadata == {"samples": 3, "aggregation": "majority_vote"}
+
+
+@pytest.mark.asyncio
+async def test_self_consistency_majority_vote_uses_answer_lines():
+    client = FakeLLMClient(
+        [
+            "Path one.\nANSWER: 42",
+            "Different reasoning.\nANSWER: 42.",
+            "Mistaken path.\nANSWER: 41",
+        ]
+    )
+    strategy = SelfConsistencyStrategy()
+    result = await strategy.execute(
+        {"default": "solve"},
+        client,  # type: ignore[arg-type]
+        config=SelfConsistencyConfig(samples=3, aggregation="majority_vote"),
+    )
+    assert result.output == "ANSWER: 42"
 
 
 @pytest.mark.asyncio

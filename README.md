@@ -2,9 +2,9 @@
   <img src="./ellements_logo_transparent_crisp.png" alt="Ellements logo" width="360">
 </p>
 
-<h1 align="center">Ellements</h1>
+<h1>Ellements</h1>
 
-<p align="center">
+<p >
   <strong>A Python toolkit for extreme experimentation with LLM systems.</strong>
 </p>
 
@@ -18,8 +18,9 @@ subpackage.
 > [!WARNING]
 > **Do not treat this as a normal dependency.** This repository exists to support
 > my own projects, experiments, and tooling. Probably nobody other than me should
-> depend on it.
->
+> depend on it directly.
+
+> [!NOTE]
 > Almost all of it is created with AI assistance, and I myself understand only a
 > fraction of it at any given time. This can produce fast-paced changes, as well
 > as both good and bad surprises. Pull requests are unlikely to be accepted. This
@@ -28,11 +29,9 @@ subpackage.
 
 ## Why yet another LLM library?
 
-The obvious objection is easy enough: there are already too many LLM libraries.
-This is true. This one, however, is mine. It exists so I can keep extending it,
+True, there are many other similar libraries. This one, however, is mine. It exists so I can keep extending it,
 test ideas, change direction, delete abstractions, and rebuild APIs as I see fit:
-not by committee, not by roadmap, and certainly not by community consensus. The
-reader does not need to like it.
+not by committee, not by roadmap, not by community consensus.
 
 ## Design principles
 
@@ -40,7 +39,8 @@ The practical consequences are the following:
 
 - **One install, focused internals.** `pip install ellements` installs the full
   namespace: `ellements.core`, `ellements.execution`, `ellements.agents`,
-  `ellements.benchmarking`, `ellements.cli`, and `ellements.fslm`.
+  `ellements.benchmarking`, `ellements.cli`, `ellements.domain_specific`,
+  `ellements.reporting`, `ellements.standard_tools`, and `ellements.fslm`.
 - **Extension before stabilization.** The point is to keep adding mechanisms as
   they become useful in my projects. Stability comes later, if it comes at all.
 - **Async-only public API.** No hidden sync wrappers. Callers keep explicit
@@ -73,6 +73,10 @@ the package or change which modules ship in the wheel.
 pip install "ellements[agents]"        # declared agent-adapter dependencies
 pip install "ellements[benchmarking]"  # lm-eval integration
 pip install "ellements[cli]"           # Textual-powered terminal UI helpers
+pip install "ellements[fslm]>=0.2.0"   # finite-state linguistic machines
+pip install "ellements[finance]"       # Yahoo Finance asset tools
+pip install "ellements[web]"           # web search, crawl, and YouTube tools
+pip install "ellements[reporting]"     # chart/report export helpers
 pip install "ellements[all]"           # all declared optional integrations
 ```
 
@@ -91,6 +95,9 @@ install it separately when using that backend.
 | `ellements.agents` | Backend-agnostic layer over external agent libraries: runner, controller, fluent `AgentBuilder`, event surface, and OpenAI/Claude adapters |
 | `ellements.benchmarking` | Async benchmark harnesses, model runners, dataset adapters, and comparison helpers |
 | `ellements.cli` | Terminal presentation primitives, agent TUI components, and slash-command building blocks |
+| `ellements.domain_specific` | Domain tools, currently including finance calculators, Yahoo Finance asset data, valuation, technical indicators, and risk helpers |
+| `ellements.reporting` | Chart artifacts, HTML report generation, and multi-format presentation helpers |
+| `ellements.standard_tools` | Reusable tool surfaces for terminal execution, web search, web crawl/read, and YouTube search/transcript access |
 | `ellements.fslm` | Finite-state linguistic machines: explicit graphs, deterministic kernel, natural-language evaluators, persistence, observers, and `fslm` CLI |
 
 ## Quick start
@@ -103,7 +110,7 @@ from ellements.core import JsonlPromptLogger, LLMClient
 
 async def main() -> None:
     client = LLMClient(
-        model="openai/gpt-4.1",
+        model="openai/gpt-5.5",
         observers=[JsonlPromptLogger("./logs")],
     )
 
@@ -137,6 +144,9 @@ result = await strategy.execute(
 print(result.output)
 ```
 
+Runtime strategy templates accept both Mustache placeholders such as
+`{{response}}` and PromptSpec-style placeholders such as `@{response}`.
+
 ## Build an agent
 
 OpenAI is shown here as one concrete adapter; the builder targets the
@@ -154,6 +164,34 @@ agent = (
 )
 ```
 
+## Use finance and web tools
+
+Finance and web tools expose canonical `ToolRegistry` surfaces, so LLM clients,
+agents, and PromptSpec examples can bind the same tools without local adapters.
+
+```bash
+pip install "ellements[finance,web]"
+playwright install chromium  # required by crawl4ai-backed page crawling
+```
+
+```python
+from ellements.domain_specific.finance.yahoo_finance import finance_tools
+from ellements.standard_tools.web.crawler import web_crawler_tools
+from ellements.standard_tools.web.search import web_search_tools
+
+tools = (
+    finance_tools()
+    .merge(web_search_tools())
+    .merge(web_crawler_tools(max_content_tokens=4000))
+)
+
+print(sorted(tools))
+```
+
+Typical stock-research tools include `search_asset`, `get_asset_quote`,
+`get_asset_profile`, `get_financial_metrics`, `search_web`, `search_news`, and
+`crawl_url`.
+
 ## Packaging model
 
 The repo is modular at the filesystem level:
@@ -164,7 +202,10 @@ ellements-execution/src/ellements/execution
 ellements-agents/src/ellements/agents
 ellements-benchmarking/src/ellements/benchmarking
 ellements-cli/src/ellements/cli
+ellements-domain-specific/src/ellements/domain_specific
 ellements-fslm/src/ellements/fslm
+ellements-reporting/src/ellements/reporting
+ellements-standard-tools/src/ellements/standard_tools
 ```
 
 Those source roots are discovered into a single wheel,
@@ -173,9 +214,11 @@ import the modules they need:
 
 ```python
 from ellements.core import LLMClient
+from ellements.domain_specific.finance.yahoo_finance import finance_tools
 from ellements.execution import TreeOfThoughtStrategy
 from ellements.agents import AgentBuilder
 from ellements.fslm import FSLMKernel
+from ellements.standard_tools.web.search import web_search_tools
 ```
 
 This gives the repo clean internal boundaries without creating multiple PyPI
@@ -189,7 +232,8 @@ python -m pytest -q
 python -m ruff check .
 python -m mypy --strict ellements-core/src ellements-execution/src \
   ellements-agents/src ellements-benchmarking/src ellements-cli/src \
-  ellements-fslm/src
+  ellements-domain-specific/src ellements-fslm/src ellements-reporting/src \
+  ellements-standard-tools/src
 ```
 
 ## License

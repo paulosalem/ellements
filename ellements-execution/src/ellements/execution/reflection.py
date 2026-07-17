@@ -6,8 +6,8 @@ structured :class:`CritiqueResult`. When ``is_satisfied`` becomes true
 
 Required prompts:
     - ``generate``: produce the initial response
-    - ``critique``: receives ``{{response}}``; must return a CritiqueResult
-    - ``revise``: receives ``{{response}}`` and ``{{issues}}``
+    - ``critique``: receives ``response``; must return a CritiqueResult
+    - ``revise``: receives ``response`` and ``issues``
 """
 
 from __future__ import annotations

@@ -22,6 +22,8 @@ def _mock_response(
     *,
     content: str | None = None,
     tool_calls: list[Any] | None = None,
+    usage: dict[str, Any] | None = None,
+    response_cost: float | None = None,
 ) -> Any:
     message = MagicMock()
     message.content = content
@@ -29,7 +31,10 @@ def _mock_response(
     message.role = "assistant"
     response = MagicMock()
     response.choices = [MagicMock(message=message)]
-    response.usage = None
+    response.usage = usage
+    response._hidden_params = (
+        {"response_cost": response_cost} if response_cost is not None else {}
+    )
     return response
 
 
@@ -112,6 +117,69 @@ async def test_complete_with_tools_records_every_call_in_order():
         {"message": "a"},
         {"message": "b"},
     ]
+
+
+@pytest.mark.asyncio
+async def test_complete_with_tools_aggregates_usage_across_turns():
+    client = LLMClient(model="openai/gpt-4o-mini")
+    tool = _ping_tool()
+    response_events: list[Any] = []
+
+    class Observer:
+        async def on_request(self, event: Any) -> None:
+            pass
+
+        async def on_response(self, event: Any) -> None:
+            response_events.append(event)
+
+        async def on_error(self, event: Any) -> None:
+            pass
+
+    client.add_observer(Observer())
+    responses = [
+        _mock_response(
+            tool_calls=[
+                _mock_tool_call(
+                    call_id="c1",
+                    name="ping",
+                    arguments={"message": "a"},
+                )
+            ],
+            usage={
+                "prompt_tokens": 10,
+                "completion_tokens": 4,
+                "total_tokens": 14,
+            },
+            response_cost=0.001,
+        ),
+        _mock_response(
+            content="done",
+            usage={
+                "prompt_tokens": 20,
+                "completion_tokens": 5,
+                "total_tokens": 25,
+            },
+            response_cost=0.002,
+        ),
+    ]
+
+    with patch(
+        "ellements.core.llm.client.litellm.acompletion",
+        AsyncMock(side_effect=responses),
+    ):
+        await client.complete_with_tools(
+            "Please ping",
+            tools=[tool],
+            max_iterations=3,
+        )
+
+    assert len(response_events) == 1
+    assert response_events[0].usage == {
+        "prompt_tokens": 30,
+        "completion_tokens": 9,
+        "total_tokens": 39,
+        "response_cost": pytest.approx(0.003),
+    }
 
 
 # ── MaxToolIterationsError contract ────────────────────────────────
