@@ -14,13 +14,13 @@ Uses numpy-financial for standard calculations and implements additional
 advanced financial formulas with Pydantic models for type safety.
 """
 
-from enum import Enum
+from enum import StrEnum
 
 import numpy_financial as npf
 from pydantic import BaseModel, Field
 
 
-class CompoundingFrequency(str, Enum):
+class CompoundingFrequency(StrEnum):
     """Compounding frequency options."""
 
     ANNUALLY = "annually"
@@ -32,7 +32,7 @@ class CompoundingFrequency(str, Enum):
     CONTINUOUS = "continuous"
 
 
-class DepreciationMethod(str, Enum):
+class DepreciationMethod(StrEnum):
     """Depreciation calculation methods."""
 
     STRAIGHT_LINE = "straight_line"
@@ -41,7 +41,7 @@ class DepreciationMethod(str, Enum):
     SUM_OF_YEARS_DIGITS = "sum_of_years_digits"
 
 
-class PaymentTiming(str, Enum):
+class PaymentTiming(StrEnum):
     """Payment timing options."""
 
     END = "end"  # Payments at end of period (ordinary annuity)
