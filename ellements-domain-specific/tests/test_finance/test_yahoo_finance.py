@@ -6,6 +6,8 @@ import pytest
 from ellements.core.exceptions import LLMError
 from ellements.domain_specific.finance import YahooFinanceSearcher
 
+pytestmark = pytest.mark.requires_network
+
 
 @pytest.fixture
 def finance_searcher():
