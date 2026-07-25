@@ -82,3 +82,11 @@ def test_all_declared_dependencies_have_compatible_upper_bounds() -> None:
             assert "<" in requirement, (
                 f"dependency has no compatible upper bound: {requirement}"
             )
+
+
+def test_finance_extras_require_pandas_3_compatible_yfinance() -> None:
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    extras = pyproject["project"]["optional-dependencies"]
+
+    for extra in ("finance", "finance-technical", "domain-specific", "all"):
+        assert "yfinance>=1.5.2,<2" in extras[extra]

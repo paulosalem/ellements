@@ -71,7 +71,7 @@ finance = [
     "numpy>=1.26.0,<3",
     "numpy-financial>=1.0.0,<2",
     "pandas>=2.0.0,<4",
-    "yfinance>=0.2.0,<1",
+    "yfinance>=1.5.2,<2",
 ]
 finance-technical = [
     "jinja2>=3.1.0,<4",
@@ -80,7 +80,7 @@ finance-technical = [
     "numpy>=1.26.0,<3",
     "pandas>=2.0.0,<4",
     "TA-Lib>=0.6.5,<1",
-    "yfinance>=0.2.0,<1",
+    "yfinance>=1.5.2,<2",
 ]
 finance-quant = [
     "numpy>=1.26.0,<3",
@@ -96,7 +96,7 @@ domain-specific = [
     "pandas>=2.0.0,<4",
     "quantstats>=0.0.62,<1",
     "TA-Lib>=0.6.5,<1",
-    "yfinance>=0.2.0,<1",
+    "yfinance>=1.5.2,<2",
 ]
 web-search = [
     "duckduckgo-search>=6.0.0,<9",
@@ -148,7 +148,7 @@ all = [
     "rich>=13.0.0,<15",
     "TA-Lib>=0.6.5,<1",
     "textual>=0.40.0,<7",
-    "yfinance>=0.2.0,<1",
+    "yfinance>=1.5.2,<2",
     "youtube-search-python>=1.6.0,<2",
     "youtube-transcript-api>=1.2.4,<2",
 ]
