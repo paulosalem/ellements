@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -11,6 +12,7 @@ import pytest
 from ellements.core import (
     LLMClient,
     LLMError,
+    LocalCacheConfig,
     LogprobsUnsupportedError,
     StructuredOutputUnsupportedError,
 )
@@ -18,6 +20,7 @@ from ellements.core.llm.client import (
     _classify_retryable,
     _full_jitter_backoff,
     _usage_dict,
+    _with_cache_control,
 )
 from pydantic import BaseModel
 
@@ -56,6 +59,20 @@ def test_default_retry_settings():
     assert client.max_retries == 3
     assert client.retry_base_delay > 0
     assert client.retry_max_delay > 0
+
+
+def test_disabled_cache_control_blocks_reads_and_writes() -> None:
+    assert _with_cache_control({}, False) == {
+        "caching": False,
+        "cache": {
+            "no-cache": True,
+            "no-store": True,
+        },
+    }
+
+
+def test_explicit_cache_opt_in_is_preserved() -> None:
+    assert _with_cache_control({"caching": True}, False) == {"caching": True}
 
 
 # ── Retry classification ────────────────────────────────────────────
@@ -233,6 +250,20 @@ class RecordingObserver:
         self.events.append(("error", event.method))
 
 
+class MetadataObserver:
+    def __init__(self) -> None:
+        self.responses: list[Any] = []
+
+    async def on_request(self, event: Any) -> None:
+        del event
+
+    async def on_response(self, event: Any) -> None:
+        self.responses.append(event)
+
+    async def on_error(self, event: Any) -> None:
+        del event
+
+
 @pytest.mark.asyncio
 async def test_observer_fires_request_and_response_on_complete():
     observer = RecordingObserver()
@@ -262,3 +293,136 @@ async def test_observer_fires_error_on_failure():
         await client.complete("hi")
     assert ("request", "complete") in observer.events
     assert ("error", "complete") in observer.events
+
+
+@pytest.mark.asyncio
+async def test_completion_forwards_cache_control_and_reports_local_hit() -> None:
+    observer = MetadataObserver()
+    client = LLMClient(model="openai/gpt-4o-mini", observers=[observer])
+    response = _mock_completion("cached")
+    response._hidden_params = {"cache_hit": True, "response_cost": 1.5}
+    mock = AsyncMock(return_value=response)
+
+    with patch("ellements.core.llm.client.litellm.acompletion", mock):
+        result = await client.complete("hello", caching=True)
+
+    assert result == "cached"
+    assert mock.await_args.kwargs["caching"] is True
+    assert observer.responses[0].usage is None
+    assert observer.responses[0].metadata == {
+        "local_cache": {
+            "hit": True,
+            "hits": 1,
+            "backend": "litellm-disk",
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_image_generation_cache_persists_and_reports_hit(tmp_path: Path) -> None:
+    first_observer = MetadataObserver()
+    second_observer = MetadataObserver()
+    cache = LocalCacheConfig(
+        tmp_path,
+        cache_responses=False,
+        cache_images=True,
+    )
+    first_client = LLMClient(
+        model="openai/gpt-image-1",
+        observers=[first_observer],
+        local_cache=cache,
+    )
+    second_client = LLMClient(
+        model="openai/gpt-image-1",
+        observers=[second_observer],
+        local_cache=cache,
+    )
+    provider = AsyncMock(
+        return_value=SimpleNamespace(
+            created=1,
+            data=[{"b64_json": "cached-image"}],
+            model="gpt-image-1",
+            usage=None,
+        )
+    )
+
+    with patch("ellements.core.llm.client.litellm.aimage_generation", provider):
+        first = await first_client.generate_image("A precise blue circle.")
+        second = await second_client.generate_image("A precise blue circle.")
+
+    assert first == second
+    assert provider.await_count == 1
+    assert first_observer.responses[0].metadata == {}
+    assert second_observer.responses[0].metadata["local_cache"]["hit"] is True
+    assert (
+        second_observer.responses[0].metadata["local_cache"]["backend"]
+        == "ellements-image-disk"
+    )
+
+
+@pytest.mark.asyncio
+async def test_image_edit_cache_keys_include_reference_content(tmp_path: Path) -> None:
+    cache = LocalCacheConfig(
+        tmp_path,
+        cache_responses=False,
+        cache_images=True,
+    )
+    client = LLMClient(model="openai/gpt-image-1", local_cache=cache)
+    provider = AsyncMock(
+        side_effect=[
+            SimpleNamespace(
+                created=1,
+                data=[{"b64_json": "first"}],
+                model="gpt-image-1",
+                usage=None,
+            ),
+            SimpleNamespace(
+                created=2,
+                data=[{"b64_json": "second"}],
+                model="gpt-image-1",
+                usage=None,
+            ),
+        ]
+    )
+
+    with patch("ellements.core.llm.client.litellm.aimage_edit", provider):
+        first = await client.edit_image("Preserve it.", [("ref.png", b"one")])
+        repeated = await client.edit_image("Preserve it.", [("ref.png", b"one")])
+        changed = await client.edit_image("Preserve it.", [("ref.png", b"two")])
+
+    assert first == repeated
+    assert changed.data[0].b64_json == "second"
+    assert provider.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_image_cache_does_not_persist_expiring_urls(tmp_path: Path) -> None:
+    cache = LocalCacheConfig(
+        tmp_path,
+        cache_responses=False,
+        cache_images=True,
+    )
+    client = LLMClient(model="openai/dall-e-3", local_cache=cache)
+    provider = AsyncMock(
+        side_effect=[
+            SimpleNamespace(
+                created=1,
+                data=[{"url": "https://provider.example/first"}],
+                model="dall-e-3",
+                usage=None,
+            ),
+            SimpleNamespace(
+                created=2,
+                data=[{"url": "https://provider.example/second"}],
+                model="dall-e-3",
+                usage=None,
+            ),
+        ]
+    )
+
+    with patch("ellements.core.llm.client.litellm.aimage_generation", provider):
+        first = await client.generate_image("A transient URL.")
+        second = await client.generate_image("A transient URL.")
+
+    assert first.data[0].url != second.data[0].url
+    assert provider.await_count == 2

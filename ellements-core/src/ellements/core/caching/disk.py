@@ -21,9 +21,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from .cache import CacheEntry
 
@@ -48,6 +50,8 @@ class JsonDiskCache:
     ) -> None:
         self._root = Path(root)
         self._root.mkdir(parents=True, exist_ok=True)
+        if os.name != "nt":
+            self._root.chmod(0o700)
         self._default_ttl = default_ttl
         self._lock = asyncio.Lock()
 
@@ -94,7 +98,14 @@ class JsonDiskCache:
         }
         async with self._lock:
             path = self._path_for(key)
-            path.write_text(json.dumps(payload), encoding="utf-8")
+            temporary = self._root / f".{path.name}.{uuid4().hex}.tmp"
+            try:
+                temporary.write_text(json.dumps(payload), encoding="utf-8")
+                if os.name != "nt":
+                    temporary.chmod(0o600)
+                temporary.replace(path)
+            finally:
+                temporary.unlink(missing_ok=True)
 
     async def delete(self, key: str) -> None:
         """Remove the file for *key* if present; no-op otherwise."""

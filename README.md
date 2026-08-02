@@ -47,6 +47,10 @@ The practical consequences are the following:
   control of concurrency.
 - **Explicit model selection.** `LLMClient(model=...)` is required. There is no
   hidden default.
+- **Explicit local caching.** Pass `LocalCacheConfig(directory=...)` to cache
+  exact text/Responses calls through LiteLLM and image generation/edit responses
+  through Ellements' content-addressed disk cache. URL-only image responses are
+  not persisted because provider URLs expire. Caching is off when omitted.
 - **Structured observability.** Every LLM call emits request, response, and
   error events. `JsonlPromptLogger` writes durable JSON-lines traces.
 - **Composable strategy layer.** Single-call, reflection, self-consistency,
@@ -105,13 +109,14 @@ install it separately when using that backend.
 ```python
 import asyncio
 
-from ellements.core import JsonlPromptLogger, LLMClient
+from ellements.core import JsonlPromptLogger, LLMClient, LocalCacheConfig
 
 
 async def main() -> None:
     client = LLMClient(
         model="openai/gpt-5.5",
         observers=[JsonlPromptLogger("./logs")],
+        local_cache=LocalCacheConfig("./cache"),
     )
 
     answer = await client.complete("Explain attention in one paragraph.")

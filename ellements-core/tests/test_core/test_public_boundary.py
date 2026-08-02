@@ -57,7 +57,7 @@ def test_root_package_exposes_installed_version() -> None:
             "-c",
             (
                 "import ellements; "
-                "assert ellements.__version__ == '0.2.0'; "
+                "assert ellements.__version__ == '0.2.1'; "
                 "assert '__version__' in ellements.__all__"
             ),
         ],

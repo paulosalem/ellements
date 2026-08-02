@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
 import json
 import logging
 import random
@@ -41,11 +42,11 @@ from collections.abc import (
 )
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 from uuid import uuid4
 
 import litellm
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from ..exceptions import (
     ConversationError,
@@ -75,6 +76,11 @@ from .images import (
     build_image_generation_request,
     parse_image_generation_response,
 )
+from .local_cache import (
+    LocalCacheConfig,
+    configure_local_response_cache,
+    create_local_image_cache,
+)
 from .messages import Conversation, MessageInput, normalize_message_input
 from .requests import (
     configure_litellm_globals,
@@ -89,6 +95,9 @@ from .structured import (
 T = TypeVar("T", bound=BaseModel)
 
 _logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from ..caching.cache import Cache
 
 
 def _is_raw_tool_definition(item: Any) -> bool:
@@ -210,6 +219,8 @@ class LLMClient:
         retry_base_delay: Base delay (seconds) for exponential backoff
             with full jitter. Default 0.5.
         retry_max_delay: Cap on individual retry delays. Default 30.0.
+        local_cache: Optional exact, persistent local-cache configuration.
+            Caching is disabled when omitted.
         **kwargs: Provider configuration forwarded to LiteLLM
             (e.g. ``api_key``, ``base_url``).
     """
@@ -224,6 +235,7 @@ class LLMClient:
         max_retries: int = 3,
         retry_base_delay: float = 0.5,
         retry_max_delay: float = 30.0,
+        local_cache: LocalCacheConfig | None = None,
         **kwargs: Any,
     ) -> None:
         if not model:
@@ -234,6 +246,14 @@ class LLMClient:
         self.max_retries = max_retries
         self.retry_base_delay = retry_base_delay
         self.retry_max_delay = retry_max_delay
+        self.local_cache = local_cache
+        self._cache_responses = bool(
+            local_cache is not None and local_cache.cache_responses
+        )
+        self._image_cache: Cache | None = None
+        if local_cache is not None:
+            configure_local_response_cache(local_cache)
+            self._image_cache = create_local_image_cache(local_cache)
         self.config = kwargs
 
         observers_list: list[LLMObserver] = list(observers or [])
@@ -332,16 +352,20 @@ class LLMClient:
         every method emits identical telemetry on failure.
         """
         try:
+            controlled_params = _with_cache_control(
+                request_params,
+                self._cache_responses,
+            )
             if tools is None:
                 return await self._call_with_retry(
                     lambda: litellm.acompletion(
-                        model=model, messages=messages, **request_params
+                        model=model, messages=messages, **controlled_params
                     ),
                     what=method,
                 )
             return await self._call_with_retry(
                 lambda: litellm.acompletion(
-                    model=model, messages=messages, tools=tools, **request_params
+                    model=model, messages=messages, tools=tools, **controlled_params
                 ),
                 what=method,
             )
@@ -421,6 +445,7 @@ class LLMClient:
                 response=content,
                 duration_ms=int((time.monotonic() - start) * 1000),
                 usage=_usage_dict(response),
+                metadata=_local_cache_metadata(response),
             )
         )
         return content
@@ -497,6 +522,7 @@ class LLMClient:
                 response=content,
                 duration_ms=int((time.monotonic() - start) * 1000),
                 usage=_usage_dict(response),
+                metadata=_local_cache_metadata(response),
             )
         )
         return parsed
@@ -541,7 +567,7 @@ class LLMClient:
                 lambda: litellm.acompletion(
                     model=request.model,
                     messages=llm_messages,
-                    **request.params,
+                    **_with_cache_control(request.params, self._cache_responses),
                 ),
                 what="stream",
             )
@@ -572,6 +598,7 @@ class LLMClient:
                     model=request.model,
                     response="".join(collected),
                     duration_ms=duration_ms,
+                    metadata=_local_cache_metadata(response),
                 )
             )
 
@@ -676,6 +703,7 @@ class LLMClient:
 
         state = _ToolLoopState(llm_messages=llm_messages)
         aggregate_usage: dict[str, Any] = {}
+        local_cache_hits = 0
         for _ in range(max_iterations):
             response = await self._invoke_litellm(
                 call_id=call_id,
@@ -691,6 +719,8 @@ class LLMClient:
                 aggregate_usage,
                 _usage_dict(response),
             )
+            if _is_local_cache_hit(response):
+                local_cache_hits += 1
             state.assistant_msg = response.choices[0].message
             tool_calls = getattr(state.assistant_msg, "tool_calls", None)
 
@@ -708,6 +738,7 @@ class LLMClient:
                         duration_ms=int((time.monotonic() - start) * 1000),
                         tool_calls=[r.model_dump() for r in state.tool_log],
                         usage=aggregate_usage or None,
+                        metadata=_local_cache_hit_count_metadata(local_cache_hits),
                     )
                 )
                 return result
@@ -738,7 +769,10 @@ class LLMClient:
                 model=request.model,
                 error=error,
                 duration_ms=int((time.monotonic() - start) * 1000),
-                metadata={"unresolved_tool_calls": len(unresolved)},
+                metadata={
+                    "unresolved_tool_calls": len(unresolved),
+                    **_local_cache_hit_count_metadata(local_cache_hits),
+                },
             )
         )
         raise error
@@ -821,7 +855,7 @@ class LLMClient:
                 lambda: litellm.acompletion(
                     model=request.model,
                     messages=llm_messages,
-                    **request.params,
+                    **_with_cache_control(request.params, self._cache_responses),
                 ),
                 what="loglikelihood",
             )
@@ -853,7 +887,11 @@ class LLMClient:
                     model=request.model,
                     response=generated,
                     duration_ms=int((time.monotonic() - start) * 1000),
-                    metadata={"total_logprob": total_ll, "is_greedy": is_greedy},
+                    metadata={
+                        "total_logprob": total_ll,
+                        "is_greedy": is_greedy,
+                        **_local_cache_metadata(response),
+                    },
                 )
             )
             return total_ll, is_greedy
@@ -910,6 +948,34 @@ class LLMClient:
             )
         )
 
+        cache_key = (
+            _image_cache_key(
+                method="generate_image",
+                model=target_model,
+                prompt=prompt,
+                params=params,
+            )
+            if self._image_cache is not None
+            else None
+        )
+        cached = (
+            await self._read_cached_image(cache_key)
+            if cache_key is not None
+            else None
+        )
+        if cached is not None:
+            await self._emit_response(
+                LLMResponseEvent(
+                    call_id=call_id,
+                    method="generate_image",
+                    model=target_model,
+                    response=json.dumps(cached.model_dump(), default=str),
+                    duration_ms=int((time.monotonic() - start) * 1000),
+                    metadata=_local_image_cache_metadata(),
+                )
+            )
+            return cached
+
         try:
             response = await self._call_with_retry(
                 lambda: litellm.aimage_generation(**params),
@@ -918,6 +984,8 @@ class LLMClient:
             parsed = parse_image_generation_response(
                 response, target_model=target_model
             )
+            if cache_key is not None:
+                await self._write_cached_image(cache_key, parsed)
             await self._emit_response(
                 LLMResponseEvent(
                     call_id=call_id,
@@ -1009,6 +1077,35 @@ class LLMClient:
                 for handle in files:
                     handle.close()
 
+        cache_key = (
+            _image_cache_key(
+                method="edit_image",
+                model=target_model,
+                prompt=prompt,
+                params=params,
+                references=references,
+            )
+            if self._image_cache is not None
+            else None
+        )
+        cached = (
+            await self._read_cached_image(cache_key)
+            if cache_key is not None
+            else None
+        )
+        if cached is not None:
+            await self._emit_response(
+                LLMResponseEvent(
+                    call_id=call_id,
+                    method="edit_image",
+                    model=target_model,
+                    response=json.dumps(cached.model_dump(), default=str),
+                    duration_ms=int((time.monotonic() - start) * 1000),
+                    metadata=_local_image_cache_metadata(),
+                )
+            )
+            return cached
+
         try:
             response = await self._call_with_retry(
                 _edit_attempt,
@@ -1017,6 +1114,8 @@ class LLMClient:
             parsed = parse_image_generation_response(
                 response, target_model=target_model
             )
+            if cache_key is not None:
+                await self._write_cached_image(cache_key, parsed)
             await self._emit_response(
                 LLMResponseEvent(
                     call_id=call_id,
@@ -1041,6 +1140,35 @@ class LLMClient:
                 raise
             raise LLMError(f"Image edit failed: {exc}") from exc
 
+    async def _read_cached_image(
+        self,
+        cache_key: str,
+    ) -> ImageGenerationResponse | None:
+        if self._image_cache is None:
+            return None
+        hit = await self._image_cache.get(cache_key)
+        if hit is None:
+            return None
+        try:
+            return ImageGenerationResponse.model_validate(hit.value)
+        except ValidationError as exc:
+            await self._image_cache.delete(cache_key)
+            _logger.warning("Discarded invalid local image cache entry: %s", exc)
+            return None
+
+    async def _write_cached_image(
+        self,
+        cache_key: str,
+        response: ImageGenerationResponse,
+    ) -> None:
+        if self._image_cache is not None and _image_response_is_durable(response):
+            await self._image_cache.set(cache_key, response)
+        elif self._image_cache is not None:
+            _logger.info(
+                "Skipped local image cache write because the response only "
+                "contains provider-hosted URLs."
+            )
+
 
 # ---------------------------------------------------------------------------
 # Local helpers
@@ -1048,6 +1176,9 @@ class LLMClient:
 
 
 def _usage_dict(response: Any) -> dict[str, Any] | None:
+    if _is_local_cache_hit(response):
+        return None
+
     usage = getattr(response, "usage", None)
     if usage is None:
         data: dict[str, Any] = {}
@@ -1066,6 +1197,87 @@ def _usage_dict(response: Any) -> dict[str, Any] | None:
         if isinstance(response_cost, int | float):
             data["response_cost"] = float(response_cost)
     return data or None
+
+
+def _with_cache_control(
+    params: Mapping[str, Any],
+    enabled: bool,
+) -> dict[str, Any]:
+    controlled = dict(params)
+    controlled.setdefault("caching", enabled)
+    if controlled["caching"] is not True:
+        cache_control = controlled.get("cache")
+        existing = dict(cache_control) if isinstance(cache_control, Mapping) else {}
+        controlled["cache"] = {
+            **existing,
+            "no-cache": True,
+            "no-store": True,
+        }
+    return controlled
+
+
+def _is_local_cache_hit(response: Any) -> bool:
+    hidden = getattr(response, "_hidden_params", None)
+    return isinstance(hidden, Mapping) and hidden.get("cache_hit") is True
+
+
+def _local_cache_metadata(response: Any) -> dict[str, Any]:
+    return _local_cache_hit_count_metadata(1 if _is_local_cache_hit(response) else 0)
+
+
+def _local_cache_hit_count_metadata(hit_count: int) -> dict[str, Any]:
+    if hit_count == 0:
+        return {}
+    return {
+        "local_cache": {
+            "hit": True,
+            "hits": hit_count,
+            "backend": "litellm-disk",
+        }
+    }
+
+
+def _local_image_cache_metadata() -> dict[str, Any]:
+    return {
+        "local_cache": {
+            "hit": True,
+            "hits": 1,
+            "backend": "ellements-image-disk",
+        }
+    }
+
+
+def _image_response_is_durable(response: ImageGenerationResponse) -> bool:
+    return bool(response.data) and all(image.b64_json for image in response.data)
+
+
+def _image_cache_key(
+    *,
+    method: str,
+    model: str,
+    prompt: str,
+    params: Mapping[str, Any],
+    references: Sequence[tuple[str, bytes]] = (),
+) -> str:
+    from ..caching.keys import build_cache_key
+
+    extra = {key: value for key, value in params.items() if key != "prompt"}
+    if references:
+        extra["references"] = [
+            {
+                "name": name,
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+            for name, payload in references
+        ]
+    return build_cache_key(
+        method=method,
+        model=model,
+        messages=prompt,
+        temperature=0.0,
+        max_tokens=None,
+        extra=extra,
+    )
 
 
 def _merge_usage(

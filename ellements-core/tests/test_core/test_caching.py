@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Any
 
@@ -163,6 +164,9 @@ async def test_json_disk_cache_round_trip(tmp_path: Path) -> None:
     hit = await cache.get("k")
     assert hit is not None
     assert hit.value == {"x": 1}
+    if os.name != "nt":
+        assert tmp_path.stat().st_mode & 0o777 == 0o700
+        assert (tmp_path / "k.json").stat().st_mode & 0o777 == 0o600
 
 
 @pytest.mark.asyncio

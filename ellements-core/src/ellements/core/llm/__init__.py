@@ -6,6 +6,7 @@ from .images import (
     ImageGenerationResponse,
     ImageInput,
 )
+from .local_cache import LocalCacheConfig
 from .messages import (
     Conversation,
     ImageURLPart,
@@ -33,6 +34,7 @@ __all__ = [
     "LLMClient",
     "LLMClientProtocol",
     "LLMClientWrapper",
+    "LocalCacheConfig",
     "Message",
     "MessageContent",
     "MessageInput",
