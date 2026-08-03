@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ellements"
-version = "0.2.1"
+version = "0.2.2"
 description = "Public Ellements primitives for LLM calls, execution strategies, finite-state linguistic machines, benchmarking, and CLI presentation."
 authors = [{ name = "Paulo Salem", email = "paulosalem@paulosalem.com" }]
 readme = "README.md"
@@ -108,14 +108,14 @@ web-crawl = [
     "playwright>=1.40.0,<2",
 ]
 web-youtube = [
-    "httpx>=0.24.0,<0.28.0",
+    "httpx>=0.28.0,<1",
     "youtube-search-python>=1.6.0,<2",
     "youtube-transcript-api>=1.2.4,<2",
 ]
 web = [
     "crawl4ai>=0.3.0,<1",
     "duckduckgo-search>=6.0.0,<9",
-    "httpx>=0.24.0,<0.28.0",
+    "httpx>=0.28.0,<1",
     "nest-asyncio>=1.6.0,<2",
     "playwright>=1.40.0,<2",
     "youtube-search-python>=1.6.0,<2",
@@ -124,7 +124,7 @@ web = [
 standard-tools = [
     "crawl4ai>=0.3.0,<1",
     "duckduckgo-search>=6.0.0,<9",
-    "httpx>=0.24.0,<0.28.0",
+    "httpx>=0.28.0,<1",
     "nest-asyncio>=1.6.0,<2",
     "playwright>=1.40.0,<2",
     "youtube-search-python>=1.6.0,<2",
@@ -134,7 +134,7 @@ all = [
     "chevron>=0.14.0,<1",
     "crawl4ai>=0.3.0,<1",
     "duckduckgo-search>=6.0.0,<9",
-    "httpx>=0.24.0,<0.28.0",
+    "httpx>=0.28.0,<1",
     "jinja2>=3.1.0,<4",
     "lm-eval>=0.4.0,<0.5",
     "matplotlib>=3.7.0,<4",

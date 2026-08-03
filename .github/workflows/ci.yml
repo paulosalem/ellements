@@ -68,4 +68,4 @@ jobs:
           python -m venv "$RUNNER_TEMP/ellements-wheel"
           "$RUNNER_TEMP/ellements-wheel/bin/pip" install dist/*.whl
           "$RUNNER_TEMP/ellements-wheel/bin/python" -c \
-            "import ellements; assert ellements.__version__ == '0.2.1'"
+            "import ellements; assert ellements.__version__ == '0.2.2'"
