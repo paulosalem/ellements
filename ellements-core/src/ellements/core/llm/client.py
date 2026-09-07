@@ -83,8 +83,8 @@ from .local_cache import (
 )
 from .messages import Conversation, MessageInput, normalize_message_input
 from .requests import (
-    configure_litellm_globals,
     extract_response_text,
+    merge_request_params,
     prepare_completion_request,
 )
 from .structured import (
@@ -206,7 +206,9 @@ class LLMClient:
 
     Args:
         model: Required default model identifier (litellm format, e.g.
-            ``"openai/gpt-4o"`` or ``"anthropic/claude-3-5-sonnet-20241022"``).
+            ``"openai/gpt-4o"``, ``"anthropic/claude-3-5-sonnet-20241022"``,
+            or ``"openrouter/openai/gpt-4.1-mini"``). OpenRouter models use
+            ``openrouter/<catalog-model-id>`` and ``OPENROUTER_API_KEY``.
         use_responses_api: Use OpenAI's Responses API (only relevant for
             ``openai/gpt-5*``).
         observers: Sequence of :class:`LLMObserver` implementations to
@@ -221,8 +223,10 @@ class LLMClient:
         retry_max_delay: Cap on individual retry delays. Default 30.0.
         local_cache: Optional exact, persistent local-cache configuration.
             Caching is disabled when omitted.
-        **kwargs: Provider configuration forwarded to LiteLLM
-            (e.g. ``api_key``, ``base_url``).
+        **kwargs: Per-client provider configuration forwarded to LiteLLM
+            (e.g. ``api_key``, ``api_base``/``base_url``, ``extra_headers``,
+            ``extra_body``). Per-call options override these settings.
+            Construction never changes LiteLLM's global credentials or URL.
     """
 
     def __init__(
@@ -260,8 +264,6 @@ class LLMClient:
         if log_dir is not None:
             observers_list.append(JsonlPromptLogger(log_dir))
         self._observers: list[LLMObserver] = observers_list
-
-        configure_litellm_globals(self.config)
 
     # ── Observers ────────────────────────────────────────────────────
 
@@ -413,7 +415,7 @@ class LLMClient:
             temperature=temperature,
             max_tokens=max_tokens,
             use_responses_api=self.use_responses_api,
-            extra_params=kwargs,
+            extra_params=merge_request_params(self.config, kwargs),
         )
         await self._emit_request(
             LLMRequestEvent(
@@ -481,7 +483,7 @@ class LLMClient:
             temperature=temperature,
             max_tokens=max_tokens,
             use_responses_api=self.use_responses_api,
-            extra_params=kwargs,
+            extra_params=merge_request_params(self.config, kwargs),
         )
         request_params = dict(request.params)
         request_params["response_format"] = response_model
@@ -547,7 +549,7 @@ class LLMClient:
             temperature=temperature,
             max_tokens=max_tokens,
             use_responses_api=self.use_responses_api,
-            extra_params={"stream": True, **kwargs},
+            extra_params=merge_request_params(self.config, {"stream": True, **kwargs}),
         )
         await self._emit_request(
             LLMRequestEvent(
@@ -685,7 +687,7 @@ class LLMClient:
             temperature=temperature,
             max_tokens=max_tokens,
             use_responses_api=self.use_responses_api,
-            extra_params=kwargs,
+            extra_params=merge_request_params(self.config, kwargs),
         )
 
         await self._emit_request(
@@ -836,7 +838,7 @@ class LLMClient:
             temperature=0.0,
             max_tokens=target_max_tokens,
             use_responses_api=self.use_responses_api,
-            extra_params={"logprobs": True, **kwargs},
+            extra_params=merge_request_params(self.config, {"logprobs": True, **kwargs}),
         )
         await self._emit_request(
             LLMRequestEvent(
@@ -928,7 +930,7 @@ class LLMClient:
         start = time.monotonic()
         target_model, params = build_image_generation_request(
             prompt=prompt,
-            model=model,
+            model=model or self.model,
             n=n,
             size=size,
             quality=quality,
@@ -936,6 +938,7 @@ class LLMClient:
             response_format=response_format,  # type: ignore[arg-type]
             extra_params=dict(kwargs),
         )
+        provider_params = merge_request_params(self.config, params)
         await self._emit_request(
             LLMRequestEvent(
                 call_id=call_id,
@@ -953,7 +956,7 @@ class LLMClient:
                 method="generate_image",
                 model=target_model,
                 prompt=prompt,
-                params=params,
+                params=provider_params,
             )
             if self._image_cache is not None
             else None
@@ -978,7 +981,7 @@ class LLMClient:
 
         try:
             response = await self._call_with_retry(
-                lambda: litellm.aimage_generation(**params),
+                lambda: litellm.aimage_generation(**provider_params),
                 what="generate_image",
             )
             parsed = parse_image_generation_response(
@@ -1035,12 +1038,13 @@ class LLMClient:
         start = time.monotonic()
         target_model, params = build_image_edit_request(
             prompt=prompt,
-            model=model,
+            model=model or self.model,
             n=n,
             size=size,
             quality=quality,
             extra_params=dict(kwargs),
         )
+        provider_params = merge_request_params(self.config, params)
 
         references: list[tuple[str, bytes]] = []
         for index, item in enumerate(images):
@@ -1072,7 +1076,7 @@ class LLMClient:
                 handle.name = name
                 files.append(handle)
             try:
-                return await litellm.aimage_edit(image=files, **params)
+                return await litellm.aimage_edit(image=files, **provider_params)
             finally:
                 for handle in files:
                     handle.close()
@@ -1082,7 +1086,7 @@ class LLMClient:
                 method="edit_image",
                 model=target_model,
                 prompt=prompt,
-                params=params,
+                params=provider_params,
                 references=references,
             )
             if self._image_cache is not None

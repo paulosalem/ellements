@@ -126,6 +126,41 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+## Use OpenRouter
+
+`LLMClient` also supports [OpenRouter](https://openrouter.ai) through the same
+LiteLLM path as direct OpenAI, Anthropic, and other providers. No additional SDK
+or package extra is needed: set `OPENROUTER_API_KEY` and prefix an
+[OpenRouter model ID](https://openrouter.ai/models) with `openrouter/`.
+
+```bash
+export OPENROUTER_API_KEY="your-openrouter-api-key"
+```
+
+```python
+import asyncio
+
+from ellements.core import LLMClient
+
+
+async def main() -> None:
+    client = LLMClient(model="openrouter/openai/gpt-4.1-mini")
+    print(await client.complete("Explain attention in one paragraph."))
+
+
+asyncio.run(main())
+```
+
+OpenRouter is useful when comparing models from different vendors through one
+account, experimenting with price/latency tradeoffs, or using its provider
+routing and fallbacks for availability. Your Ellements strategies and client
+wrappers stay unchanged. Model capabilities, pricing, and data-handling policies
+still depend on the chosen model and upstream provider.
+
+See the [core provider guide](ellements-core/README.md#providers-and-openrouter)
+for explicit credentials, optional app headers, routing preferences, streaming,
+and structured output.
+
 ## Run a strategy
 
 ```python

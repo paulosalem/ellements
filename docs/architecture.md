@@ -114,6 +114,23 @@ substring matching). Strategies and agents never retry themselves.
 `LLMClientProtocol` is the structural type that the rest of the codebase
 depends on, so users can substitute their own client.
 
+Provider selection stays in LiteLLM model identifiers. In particular,
+`openrouter/<catalog-model-id>` uses LiteLLM's OpenRouter adapter and
+`OPENROUTER_API_KEY`; no separate SDK, client subclass, or provider registry is
+needed. Explicit routes must survive model normalization: OpenAI-specific
+GPT-5 conveniences apply only to bare or direct-OpenAI model names.
+OpenRouter continues to use the Chat Completions tool format even when the
+client's direct-OpenAI Responses preference is enabled.
+
+Connection settings and provider options are request-local. Constructor
+configuration is merged with per-call overrides before dispatch, with
+`base_url` normalized to `api_base` in each layer. Creating a client must not
+change LiteLLM's global credentials or endpoint, so direct-provider and gateway
+clients can coexist. Native capability checks and wire transformations remain
+LiteLLM's responsibility. See the
+[provider guide](../ellements-core/README.md#providers-and-openrouter) for setup
+and practical tradeoffs.
+
 Multimodal inputs use `ImageInput` (`from_path` / `from_url` /
 `from_data_uri`) which converts to `ImageURLPart` for the wire format.
 

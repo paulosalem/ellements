@@ -121,7 +121,7 @@ def default_dialect_for_model(
         return AnthropicDialect()
     if model_lc.startswith("gemini/") or model_lc.startswith("gemini-"):
         return GeminiDialect()
-    if use_responses_api:
+    if use_responses_api and (model_lc.startswith("openai/") or "/" not in model_lc):
         return OpenAIResponsesDialect()
     return OpenAIChatDialect()
 

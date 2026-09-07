@@ -6,8 +6,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-import litellm
-
 from .model_params import filter_parameters, get_unsupported_parameters
 
 
@@ -20,12 +18,23 @@ class CompletionRequest:
     logged_max_tokens: int | None
 
 
-def configure_litellm_globals(config: Mapping[str, Any]) -> None:
-    """Apply top-level LiteLLM configuration from a client config mapping."""
-    if "api_key" in config:
-        litellm.api_key = config["api_key"]
-    if "base_url" in config:
-        litellm.api_base = config["base_url"]
+def merge_request_params(
+    config: Mapping[str, Any],
+    overrides: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Merge client settings and call overrides without changing LiteLLM globals.
+
+    Normalize each layer's ``base_url`` to LiteLLM's ``api_base`` before
+    merging so a call override wins even when the two layers use different names.
+    """
+    merged: dict[str, Any] = {}
+    for source in (config, overrides):
+        params = dict(source)
+        if "base_url" in params:
+            base_url = params.pop("base_url")
+            params.setdefault("api_base", base_url)
+        merged.update(params)
+    return merged
 
 
 def resolve_model_name(
@@ -33,11 +42,13 @@ def resolve_model_name(
     *,
     use_responses_api: bool = False,
 ) -> tuple[str, bool]:
-    """Resolve provider-prefixed model names for special GPT-5 routing."""
-    is_gpt5 = "gpt-5" in model.lower()
+    """Preserve explicit routes and identify direct OpenAI GPT-5 calls."""
+    is_gpt5 = model.lower().startswith(
+        ("gpt-5", "openai/gpt-5", "openai/responses/gpt-5")
+    )
     target_model = model
 
-    if is_gpt5 and not model.startswith("openai/"):
+    if is_gpt5 and "/" not in model:
         if use_responses_api:
             target_model = f"openai/responses/{model}"
         else:

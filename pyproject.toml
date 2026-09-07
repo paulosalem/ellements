@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ellements"
-version = "0.2.2"
+version = "0.2.3"
 description = "Public Ellements primitives for LLM calls, execution strategies, finite-state linguistic machines, benchmarking, and CLI presentation."
 authors = [{ name = "Paulo Salem", email = "paulosalem@paulosalem.com" }]
 readme = "README.md"
