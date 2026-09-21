@@ -37,6 +37,12 @@ MODEL_PARAMETER_RESTRICTIONS = {
     # a single question through its own interface for exactly this
     # (2026-09-21).
     r"(openai/(responses/)?)?gpt-6(-.*)?": {
+        # LiteLLM's own parameter table does not carry this family yet, so it
+        # refuses `reasoning_effort` outright — "openai does not support
+        # parameters: ['reasoning_effort']" — on either endpoint. Sending it
+        # fails the call, and a failed call under a budget leaves a liability.
+        # The model reasons by its own default without being told to.
+        "reasoning_effort",
         "temperature",
         "top_p",
         "presence_penalty",
