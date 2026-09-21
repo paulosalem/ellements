@@ -37,24 +37,39 @@ def merge_request_params(
     return merged
 
 
+#: The OpenAI reasoning families, by the name they are called.
+REASONING_MODEL_PREFIXES = ("gpt-5", "gpt-6")
+
+
 def resolve_model_name(
     model: str,
     *,
     use_responses_api: bool = False,
 ) -> tuple[str, bool]:
-    """Preserve explicit routes and identify direct OpenAI GPT-5 calls."""
-    is_gpt5 = model.lower().startswith(
-        ("gpt-5", "openai/gpt-5", "openai/responses/gpt-5")
-    )
+    """Route an OpenAI reasoning model, honouring an explicit responses route.
+
+    Asking for the responses API used to be silently ignored whenever the
+    model already carried a provider prefix, so a caller that wrote
+    `openai/gpt-6-astra` and asked for responses got chat completions anyway --
+    where that model refuses function tools outright. Every question asked
+    through one company's interface failed on it, each failure leaving a paid
+    call nobody could account for (2026-09-21). A route the caller wrote
+    explicitly is still preserved: `openai/responses/...` stays as it is.
+    """
+    lowered = model.lower()
+    already_responses = lowered.startswith("openai/responses/")
+    bare = lowered.removeprefix("openai/responses/").removeprefix("openai/")
+    is_reasoning = bare.startswith(REASONING_MODEL_PREFIXES)
     target_model = model
 
-    if is_gpt5 and "/" not in model:
+    if is_reasoning and not already_responses:
+        name = model.split("/")[-1]
         if use_responses_api:
-            target_model = f"openai/responses/{model}"
-        else:
-            target_model = f"openai/{model}"
+            target_model = f"openai/responses/{name}"
+        elif "/" not in model:
+            target_model = f"openai/{name}"
 
-    return target_model, is_gpt5
+    return target_model, is_reasoning
 
 
 def prepare_completion_request(

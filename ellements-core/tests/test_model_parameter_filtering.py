@@ -89,3 +89,38 @@ class TestParameterFiltering:
     def test_filter_parameters_warns(self):
         with pytest.warns(UserWarning, match="does not support parameters"):
             filter_parameters("gpt-5-mini", temperature=0.7)
+
+
+class TestReasoningModelRouting:
+    """Asking for the responses API has to actually ask for it.
+
+    A caller that wrote `openai/gpt-6-astra` and asked for responses got chat
+    completions anyway, where that model refuses function tools outright.
+    Every question asked through one company's interface failed on it, and
+    each failure left a paid call nobody could account for (2026-09-21).
+    """
+
+    @pytest.mark.parametrize("written", ["gpt-6-astra", "openai/gpt-6-astra"])
+    def test_a_prefixed_reasoning_model_still_honours_the_responses_route(self, written):
+        from ellements.core.llm.requests import resolve_model_name
+
+        target, is_reasoning = resolve_model_name(written, use_responses_api=True)
+        assert target == "openai/responses/gpt-6-astra"
+        assert is_reasoning is True
+
+    def test_an_explicit_route_is_preserved(self):
+        from ellements.core.llm.requests import resolve_model_name
+
+        assert resolve_model_name("openai/responses/gpt-6-astra")[0] == (
+            "openai/responses/gpt-6-astra"
+        )
+
+    def test_chat_completions_is_still_the_default(self):
+        from ellements.core.llm.requests import resolve_model_name
+
+        assert resolve_model_name("gpt-6-astra")[0] == "openai/gpt-6-astra"
+
+    def test_a_model_of_no_reasoning_family_is_left_alone(self):
+        from ellements.core.llm.requests import resolve_model_name
+
+        assert resolve_model_name("gpt-4o", use_responses_api=True) == ("gpt-4o", False)
