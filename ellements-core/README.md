@@ -7,6 +7,15 @@ exceptions.
 
 ## Principles
 
+Reference-assisted paid producers can inject `image_edit_transport` into
+`LLMClient` and call `edit_image` with captured `(filename, bytes)` inputs.
+`OpenAIImageEditTransport` uses the official async SDK, retains observed request
+identities and upload hashes, and supports one high-fidelity opaque PNG result.
+This transport requires client retries and caching to be disabled. Masks,
+URLs, hidden conditioning and fallback to generation are unsupported. Transport
+availability and input hashes establish neither reference permission nor custody;
+the caller must establish those before financial admission and recheck at handoff.
+
 - **Explicit model calls.** `LLMClient(model=...)` is required. There is no
   hidden default model.
 - **Protocols before inheritance.** Consumers should depend on
@@ -32,7 +41,15 @@ exceptions.
 | `ellements.core.caching` | `CachingLLMClient`, `InMemoryCache`, `JsonDiskCache` |
 | `ellements.core.rate_limit` | `RateLimitedLLMClient`, `TokenBucketRateLimiter` |
 | `ellements.core.budgeting` | `BudgetedLLMClient`, call-count and token budgets |
+| `ellements.yaml` | Lightweight safe YAML parsing with portable values and diagnostics |
 | `ellements.core.config`, `chunking`, `templating`, `async_utils` | Small reusable utilities |
+
+`ellements.yaml.load_yaml(content)` accepts text or bytes and retains
+PyYAML's safe values, encoding behavior and Python diagnostics. It uses the
+safe C parser where those semantics agree, without caching source contents or
+constructed objects. Its lightweight root module does not load the model-provider
+integrations. File ownership, current-byte reads and schema validation remain
+the caller's responsibility.
 
 ## Providers and OpenRouter
 
@@ -228,6 +245,46 @@ client = RateLimitedLLMClient(
 
 ## Extending
 
+### Governed completion transports
+
+`LLMClient(model=..., completion_transport=transport)` routes **every actual
+non-streaming completion attempt** through a `CompletionTransport`, below tool
+iteration, structured parsing and retries. `complete(CompletionRequest)` returns
+the raw provider `ModelResponse`. `CompletionRequest.as_json()` converts native
+Pydantic response schemas using LiteLLM's strict-schema adapter and rejects
+non-JSON Python objects. A transport can execute through an independently guarded
+company boundary rather than the application's provider credentials.
+
+Transport refusal is not telemetry: it propagates and there is no direct-provider
+fallback. Each retry calls the transport again, allowing separate admission;
+transports must not implement another retry loop. Native streaming is explicitly
+unavailable when this transport is configured. Image generation has a separate
+provider path and is not governed by a **completion** transport. High-level
+`BudgetedLLMClient` trackers and fail-open logging observers are not substitutes
+for financial admission/settlement at an actual provider boundary.
+
 Add stable primitives here when more than one package should be able to reuse
 them. Prefer a small protocol plus one obvious implementation; keep provider
 wire formats behind dialects; and do not hide behavior in broad root exports.
+# Receipt-preserving image generation
+
+`LLMClient(..., image_generation_transport=OpenAIImageGenerationTransport(
+timeout_seconds=900))` uses the official asynchronous image SDK and retains
+observed provider request identities in `ImageGenerationResponse.provider_receipt_ids`.
+Import the transport from `ellements.core.llm.image_transport`.
+The transport accepts one explicit text-only image request, no hidden image
+inputs, fixed OpenAI endpoint and no SDK retries. Use `max_retries=0` and no local
+cache for externally accounted one-shot requests. Missing receipt identity is an
+empty tuple, never a synthesized local identifier. Generation still uses the
+shared client's observer pipeline. This primitive does not grant spending,
+source-use, publication or organization authority.
+
+`OpenAIImageGenerationTransport.preflight()` checks only that this process has
+nonempty `OPENAI_API_KEY` credentials. Call it before financial reservation when
+preparing a governed request. It does not discover credentials, source a shell,
+authenticate remotely, or retain credential values. An SDK constructor/context-entry
+failure before the request phase raises `ImageGenerationNotStartedError`; request,
+timeout and response-parse failures still raise `ImageGenerationTransportError`
+and remain uncertain. Both expose bounded failure facts without exception messages
+or response bodies. Nonexecution evidence is not itself ledger-release or retry
+authority; the owning guarded spending boundary must apply its disposition rules.

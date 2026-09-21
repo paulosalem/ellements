@@ -10,12 +10,42 @@ content parts directly with :meth:`LLMClient.complete` for analysis tasks.
 from __future__ import annotations
 
 import base64
+import hashlib
+import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 from .messages import ImageDetail, MessageContent
+
+
+@dataclass(frozen=True)
+class ImageUpload:
+    """Captured upload bytes. This identity asserts neither custody nor permission."""
+
+    filename: str
+    content: bytes = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,160}\.(png|jpg|jpeg|webp)", self.filename):
+            raise ValueError("An image upload requires a safe explicit PNG/JPEG/WebP filename.")
+        if type(self.content) is not bytes or not 0 < len(self.content) < 50_000_000:
+            raise ValueError("An image upload requires captured bytes below 50 MB.")
+
+    @property
+    def media_type(self) -> str:
+        return "image/" + {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "webp": "webp"}[
+            self.filename.rsplit(".", 1)[1]
+        ]
+
+    def identity(self) -> dict[str, Any]:
+        """JSON-friendly facts about the exact bytes supplied to the SDK."""
+        return {
+            "sha256": hashlib.sha256(self.content).hexdigest(),
+            "size_bytes": len(self.content), "media_type": self.media_type,
+        }
 
 _MEDIA_TYPE_BY_EXT: dict[str, str] = {
     ".png": "image/png",
@@ -125,6 +155,12 @@ class ImageGenerationResponse(BaseModel):
     usage: Any | None = Field(
         default=None, description="Usage info (shape varies by provider)"
     )
+    provider_receipt_ids: tuple[str, ...] = Field(
+        default=(), description="Observed provider request identities, never local attempt IDs"
+    )
+    request_parameters: dict[str, Any] | None = Field(
+        default=None, description="Actual public parameters passed to the provider SDK; excludes credentials"
+    )
 
 
 def build_image_generation_request(
@@ -197,25 +233,22 @@ def normalize_usage(usage_obj: Any) -> Any | None:
 
 
 def parse_image_generation_response(
-    response: Any, *, target_model: str
+    response: Any, *, target_model: str, provider_receipt_ids: tuple[str, ...] = ()
 ) -> ImageGenerationResponse:
     """Normalize a LiteLLM image-generation response into a stable model."""
     return ImageGenerationResponse(
         created=response.created,
-        data=[
-            GeneratedImage(
-                url=img.get("url"),
-                b64_json=img.get("b64_json"),
-                revised_prompt=img.get("revised_prompt"),
-            )
-            for img in response.data
-        ],
+        data=[GeneratedImage.model_validate(
+            img.model_dump() if hasattr(img, "model_dump") else img
+        ) for img in response.data],
         model=getattr(response, "model", target_model),
         usage=normalize_usage(getattr(response, "usage", None)),
+        provider_receipt_ids=provider_receipt_ids,
     )
 
 
 __all__ = [
+    "ImageUpload",
     "GeneratedImage",
     "ImageGenerationResponse",
     "ImageInput",

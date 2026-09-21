@@ -21,6 +21,34 @@ class TestParameterFiltering:
         ):
             assert param in unsupported
 
+    @pytest.mark.parametrize(
+        "model",
+        ["gpt-6-astra", "openai/gpt-6-astra", "openai/responses/gpt-6-astra", "gpt-6"],
+    )
+    def test_gpt6_unsupported_parameters(self, model):
+        """A reasoning model refuses a temperature outright.
+
+        "Unsupported value: 'temperature' does not support 0.7 with this
+        model. Only the default (1) value is supported." A model missing from
+        the table fails every call it is used for, and a failed call under a
+        budget leaves a liability that refuses the next identical request:
+        one company could not answer a single question through its own
+        interface for an afternoon because of this one omission (2026-09-21).
+        """
+        unsupported = get_unsupported_parameters(model)
+        for param in (
+            "temperature",
+            "top_p",
+            "presence_penalty",
+            "frequency_penalty",
+            "logprobs",
+            "top_logprobs",
+            "logit_bias",
+            "max_tokens",
+        ):
+            assert param in unsupported
+        assert filter_parameters(model, temperature=0.7, top_p=1) == {}
+
     def test_o3_unsupported_parameters(self):
         unsupported = get_unsupported_parameters("o3")
         assert "temperature" in unsupported

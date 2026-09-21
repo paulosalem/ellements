@@ -23,10 +23,13 @@ from .structured import (
     parse_structured_content,
     supports_structured_output,
 )
+from .transport import CompletionRequest, CompletionTransport
 from .wrapper import LLMClientWrapper
 
 __all__ = [
     "Conversation",
+    "CompletionRequest",
+    "CompletionTransport",
     "GeneratedImage",
     "ImageGenerationResponse",
     "ImageInput",

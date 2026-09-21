@@ -70,8 +70,10 @@ from ..tools import (
     ToolRegistry,
     default_dialect_for_model,
 )
+from .image_transport import ImageEditTransport, ImageGenerationTransport
 from .images import (
     ImageGenerationResponse,
+    ImageUpload,
     build_image_edit_request,
     build_image_generation_request,
     parse_image_generation_response,
@@ -91,6 +93,7 @@ from .structured import (
     ensure_structured_support,
     parse_structured_content,
 )
+from .transport import CompletionRequest, CompletionTransport
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -223,6 +226,9 @@ class LLMClient:
         retry_max_delay: Cap on individual retry delays. Default 30.0.
         local_cache: Optional exact, persistent local-cache configuration.
             Caching is disabled when omitted.
+        completion_transport: Optional mandatory transport for each completion
+            attempt, including retries and tool continuations. No direct-provider
+            fallback occurs. Streaming is unavailable with this transport.
         **kwargs: Per-client provider configuration forwarded to LiteLLM
             (e.g. ``api_key``, ``api_base``/``base_url``, ``extra_headers``,
             ``extra_body``). Per-call options override these settings.
@@ -240,6 +246,9 @@ class LLMClient:
         retry_base_delay: float = 0.5,
         retry_max_delay: float = 30.0,
         local_cache: LocalCacheConfig | None = None,
+        completion_transport: CompletionTransport | None = None,
+        image_generation_transport: ImageGenerationTransport | None = None,
+        image_edit_transport: ImageEditTransport | None = None,
         **kwargs: Any,
     ) -> None:
         if not model:
@@ -251,6 +260,11 @@ class LLMClient:
         self.retry_base_delay = retry_base_delay
         self.retry_max_delay = retry_max_delay
         self.local_cache = local_cache
+        self.completion_transport = completion_transport
+        self.image_generation_transport = image_generation_transport
+        self.image_edit_transport = image_edit_transport
+        if image_edit_transport is not None and (max_retries != 0 or local_cache is not None):
+            raise ValueError("An explicit image edit transport requires zero retries and no local cache.")
         self._cache_responses = bool(
             local_cache is not None and local_cache.cache_responses
         )
@@ -330,6 +344,15 @@ class LLMClient:
 
     # ── Shared call wrapper ──────────────────────────────────────────
 
+    async def _complete_attempt(
+        self, *, model: str, messages: list[dict[str, Any]], **parameters: Any
+    ) -> Any:
+        if self.completion_transport is not None:
+            return await self.completion_transport.complete(CompletionRequest(
+                model=model, messages=messages, parameters=parameters
+            ))
+        return await litellm.acompletion(model=model, messages=messages, **parameters)
+
     async def _invoke_litellm(
         self,
         *,
@@ -360,13 +383,13 @@ class LLMClient:
             )
             if tools is None:
                 return await self._call_with_retry(
-                    lambda: litellm.acompletion(
+                    lambda: self._complete_attempt(
                         model=model, messages=messages, **controlled_params
                     ),
                     what=method,
                 )
             return await self._call_with_retry(
-                lambda: litellm.acompletion(
+                lambda: self._complete_attempt(
                     model=model, messages=messages, tools=tools, **controlled_params
                 ),
                 what=method,
@@ -541,6 +564,11 @@ class LLMClient:
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Stream completion tokens as they are produced."""
+        if self.completion_transport is not None:
+            raise LLMError(
+                "Streaming is unavailable with a governed completion transport; "
+                "no direct-provider fallback is permitted."
+            )
         call_id = str(uuid4())
         start = time.monotonic()
         llm_messages = normalize_message_input(messages)
@@ -980,13 +1008,17 @@ class LLMClient:
             return cached
 
         try:
-            response = await self._call_with_retry(
-                lambda: litellm.aimage_generation(**provider_params),
-                what="generate_image",
-            )
-            parsed = parse_image_generation_response(
-                response, target_model=target_model
-            )
+            if self.image_generation_transport is not None:
+                parsed = await self._call_with_retry(
+                    lambda: self.image_generation_transport.generate(provider_params),
+                    what="generate_image",
+                )
+            else:
+                response = await self._call_with_retry(
+                    lambda: litellm.aimage_generation(**provider_params),
+                    what="generate_image",
+                )
+                parsed = parse_image_generation_response(response, target_model=target_model)
             if cache_key is not None:
                 await self._write_cached_image(cache_key, parsed)
             await self._emit_response(
@@ -1024,6 +1056,7 @@ class LLMClient:
         n: int = 1,
         size: str | None = None,
         quality: str | None = None,
+        mask: tuple[str, bytes] | bytes | None = None,
         **kwargs: Any,
     ) -> ImageGenerationResponse:
         """Edit/compose images from reference *images* and a text *prompt*.
@@ -1031,6 +1064,12 @@ class LLMClient:
         Each entry in *images* is either raw ``bytes`` or a ``(filename, bytes)``
         tuple. The references are uploaded to the provider's image-edit endpoint
         (e.g. ``gpt-image-1``) so the generated image is conditioned on them.
+
+        Pass *mask* -- raw ``bytes`` or a ``(filename, bytes)`` tuple of PNG bytes
+        with an alpha channel, matching the first reference's pixel geometry -- to
+        confine the edit. The mask's transparent pixels are the only region the
+        model may repaint; the rest is preserved by the endpoint itself rather
+        than by asking for restraint in the prompt.
         """
         import io
 
@@ -1053,6 +1092,9 @@ class LLMClient:
             else:
                 name, payload = f"reference_{index}.png", item
             references.append((name, payload))
+        mask_upload: tuple[str, bytes] | None = (
+            None if mask is None else mask if isinstance(mask, tuple) else ("mask.png", mask)
+        )
 
         await self._emit_request(
             LLMRequestEvent(
@@ -1075,11 +1117,20 @@ class LLMClient:
                 handle = io.BytesIO(payload)
                 handle.name = name
                 files.append(handle)
+            handle_mask: io.BytesIO | None = None
+            if mask_upload is not None:
+                handle_mask = io.BytesIO(mask_upload[1])
+                handle_mask.name = mask_upload[0]
             try:
-                return await litellm.aimage_edit(image=files, **provider_params)
+                return await litellm.aimage_edit(
+                    image=files, **provider_params,
+                    **({"mask": handle_mask} if handle_mask is not None else {}),
+                )
             finally:
                 for handle in files:
                     handle.close()
+                if handle_mask is not None:
+                    handle_mask.close()
 
         cache_key = (
             _image_cache_key(
@@ -1087,7 +1138,7 @@ class LLMClient:
                 model=target_model,
                 prompt=prompt,
                 params=provider_params,
-                references=references,
+                references=references if mask_upload is None else [*references, mask_upload],
             )
             if self._image_cache is not None
             else None
@@ -1111,13 +1162,22 @@ class LLMClient:
             return cached
 
         try:
-            response = await self._call_with_retry(
-                _edit_attempt,
-                what="edit_image",
-            )
-            parsed = parse_image_generation_response(
-                response, target_model=target_model
-            )
+            if self.image_edit_transport is not None:
+                # Only supplied when the edit is actually confined, so a
+                # transport written before masks existed keeps working.
+                parsed = await self.image_edit_transport.edit(
+                    provider_params,
+                    tuple(ImageUpload(name, payload) for name, payload in references),
+                    *((ImageUpload(*mask_upload),) if mask_upload is not None else ()),
+                )
+            else:
+                response = await self._call_with_retry(
+                    _edit_attempt,
+                    what="edit_image",
+                )
+                parsed = parse_image_generation_response(
+                    response, target_model=target_model
+                )
             if cache_key is not None:
                 await self._write_cached_image(cache_key, parsed)
             await self._emit_response(

@@ -28,6 +28,24 @@ MODEL_PARAMETER_RESTRICTIONS = {
         "top_logprobs",
         "logit_bias",
     },
+    # The reasoning models after gpt-5 answer a temperature with a refusal:
+    # "Unsupported value: 'temperature' does not support 0.7 with this model.
+    # Only the default (1) value is supported." A model missing from this table
+    # is not a mild misconfiguration -- every call it is used for fails, and a
+    # call that fails under a budget leaves a liability that then refuses the
+    # next identical request. One company spent an afternoon unable to answer
+    # a single question through its own interface for exactly this
+    # (2026-09-21).
+    r"(openai/(responses/)?)?gpt-6(-.*)?": {
+        "temperature",
+        "top_p",
+        "presence_penalty",
+        "frequency_penalty",
+        "logprobs",
+        "top_logprobs",
+        "logit_bias",
+        "max_tokens",
+    },
 }
 
 
