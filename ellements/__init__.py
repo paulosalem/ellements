@@ -40,7 +40,7 @@ _ROOT_EXPORTS: dict[str, tuple[str, str]] = {
 try:
     __version__ = version("ellements")
 except PackageNotFoundError:
-    __version__ = "0.2.3"
+    __version__ = "0.2.10"
 
 __all__ = [*sorted(_ROOT_EXPORTS), "__version__"]
 

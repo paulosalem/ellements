@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ellements"
-version = "0.2.3"
+version = "0.2.10"
 description = "Public Ellements primitives for LLM calls, execution strategies, finite-state linguistic machines, benchmarking, and CLI presentation."
 authors = [{ name = "Paulo Salem", email = "paulosalem@paulosalem.com" }]
 readme = "README.md"
@@ -31,6 +31,7 @@ dependencies = [
     "chevron>=0.14.0,<1",
     "diskcache>=5.6.0,<6",
     "litellm>=1.0.0,<2",
+    "openai>=2.0.0,<3",
     "pydantic>=2.0.0,<3",
     "pyyaml>=6.0,<7",
     "rich>=13.0.0,<15",
