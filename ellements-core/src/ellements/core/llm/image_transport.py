@@ -122,9 +122,11 @@ class OpenAIImageGenerationTransport:
         except Exception as error:
             from openai import APIStatusError
 
+            refusal: dict[str, Any] = {}
             if isinstance(error, APIStatusError):
                 status = error.status_code
                 identifier = error.request_id
+                refusal = _refusal_guidance(error)
             failure = (
                 ImageGenerationNotStartedError
                 if phase == "client_initialization" and status is None and identifier is None
@@ -137,6 +139,7 @@ class OpenAIImageGenerationTransport:
                 "http_status": status,
                 "provider_receipt_ids": list(_receipts(identifier)),
                 "timeout_seconds": self.timeout_seconds,
+                **refusal,
             }) from None
         result.request_parameters = request
         if images is not None:
@@ -147,6 +150,41 @@ class OpenAIImageGenerationTransport:
             }
         return result
 
+
+
+#: A provider's error code or type is a word it chose from a closed vocabulary
+#: (``insufficient_quota``, ``rate_limit_exceeded``); its message is free text
+#: that can echo the request, and is never kept.
+_PROVIDER_WORD = re.compile(r"[a-z][a-z0-9_]{0,63}")
+#: Longest retry guidance kept: a day. Anything longer is not guidance.
+_RETRY_AFTER_LIMIT_SECONDS = 86_400.0
+
+
+def _refusal_guidance(error: Any) -> dict[str, Any]:
+    """The provider's own reason for a refusal and its retry guidance, nothing else.
+
+    On 2026-10-19 an HTTP 429 stopped a company's painting for ten days: 429 is
+    both "slow down for a minute" and "the account has no credit", and only the
+    provider's error code tells them apart. The diagnostic kept the status and
+    dropped the code, so nobody could say whether waiting would help.
+    """
+    guidance: dict[str, Any] = {}
+    for key, value in (("provider_error_code", getattr(error, "code", None)),
+                       ("provider_error_type", getattr(error, "type", None))):
+        if isinstance(value, str) and _PROVIDER_WORD.fullmatch(value):
+            guidance[key] = value
+    headers = getattr(getattr(error, "response", None), "headers", None) or {}
+    seconds: float | None = None
+    try:
+        if (milliseconds := headers.get("retry-after-ms")) is not None:
+            seconds = float(milliseconds) / 1000
+        elif (after := headers.get("retry-after")) is not None:
+            seconds = float(after)
+    except (TypeError, ValueError):
+        seconds = None
+    if seconds is not None and 0 <= seconds <= _RETRY_AFTER_LIMIT_SECONDS:
+        guidance["retry_after_seconds"] = round(seconds, 3)
+    return guidance
 
 class OpenAIImageEditTransport(OpenAIImageGenerationTransport):
     """One explicit reference-assisted edit, optionally masked; no URLs or retries."""
